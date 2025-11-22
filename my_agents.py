@@ -17,23 +17,23 @@ class AgentsConfigError(Exception):
 # Configurazione caricata da XML (lazy, solo al primo utilizzo)
 # Struttura:
 # {
-#   "OrdersAgent": {
-#       "id": "orders",
+#   "orders": {
+#       "name": "OrdersAgent",
 #       "description": "...",
 #       "instructions": "..."
 #   },
-#   "CustomersAgent": {
-#       "id": "customers",
+#   "customers": {
+#       "name": "CustomersAgent",
 #       ...
 #   },
 # }
-_AGENTS_CONFIG: Optional[Dict[str, Dict[str, str]]] = None
+_AGENTS_BY_ID: Optional[Dict[str, Dict[str, str]]] = None
 
 
 def _load_agents_from_xml() -> Dict[str, Dict[str, str]]:
     """
-    Legge la configurazione degli agent da my_agents.xlm (o, in fallback, my_agents.xml)
-    e restituisce un dizionario keyed per 'name' (attributo name dell'XML).
+    Legge la configurazione degli agent da my_agents.xlm (o, in fallback,
+    my_agents.xml) e restituisce un dizionario indicizzato per 'id'.
     """
     primary = Path("my_agents.xlm")
     fallback = Path("my_agents.xml")
@@ -54,15 +54,15 @@ def _load_agents_from_xml() -> Dict[str, Dict[str, str]]:
     tree = ET.parse(path)
     root = tree.getroot()
 
-    agents_config: Dict[str, Dict[str, str]] = {}
+    agents_by_id: Dict[str, Dict[str, str]] = {}
 
     for agent_el in root.findall("Agent"):
-        name = agent_el.get("name")
-        agent_id = agent_el.get("id")
+        agent_id = (agent_el.get("id") or "").strip()
+        name = (agent_el.get("name") or "").strip()
 
-        if not name:
+        if not agent_id:
             logger.warning(
-                "Trovato un <Agent> senza attributo 'name' nel file %s",
+                "Trovato un <Agent> senza attributo 'id' nel file %s",
                 path,
             )
             continue
@@ -75,131 +75,123 @@ def _load_agents_from_xml() -> Dict[str, Dict[str, str]]:
 
         if not instructions:
             logger.warning(
-                "L'Agent '%s' nel file %s non ha istruzioni (Instructions vuoto).",
-                name,
+                "L'Agent con id='%s' nel file %s non ha istruzioni (Instructions vuoto).",
+                agent_id,
                 path,
             )
 
-        agents_config[name] = {
-            "id": agent_id or "",
+        agents_by_id[agent_id] = {
+            "name": name,  # etichetta "umana", opzionale
             "description": description,
             "instructions": instructions,
         }
 
-    if not agents_config:
+    if not agents_by_id:
         raise AgentsConfigError(
             f"Nessun <Agent> valido trovato nel file XML: {path.resolve()}"
         )
 
     logger.info(
         "Caricati %d agent dal file di configurazione: %s",
-        len(agents_config),
+        len(agents_by_id),
         path.resolve(),
     )
-    logger.info("Nomi agent caricati: %s", list(agents_config.keys()))
-    return agents_config
+    logger.info("ID agent caricati: %s", list(agents_by_id.keys()))
+    return agents_by_id
 
 
-def _get_agents_config() -> Dict[str, Dict[str, str]]:
+def _get_agents_by_id() -> Dict[str, Dict[str, str]]:
     """
     Ritorna la configurazione degli agent, caricandola da XML alla prima chiamata.
     """
-    global _AGENTS_CONFIG
-    if _AGENTS_CONFIG is None:
-        _AGENTS_CONFIG = _load_agents_from_xml()
-    return _AGENTS_CONFIG
+    global _AGENTS_BY_ID
+    if _AGENTS_BY_ID is None:
+        _AGENTS_BY_ID = _load_agents_from_xml()
+    return _AGENTS_BY_ID
 
 
 # ================== API PUBBLICA ==================
 
 
-def create_agent(agent_name: str, mcp_server: MCPServerStdio) -> Agent:
+def create_agent_by_id(agent_id: str, mcp_server: MCPServerStdio) -> Agent:
     """
-    Crea un Agent generico a partire dalla configurazione letta dal file XML.
+    Crea un Agent generico a partire dalla configurazione letta dal file XML,
+    identificandolo tramite 'id'.
 
     Esempi:
-        create_agent("OrdersAgent", mcp_server)
-        create_agent("CustomersAgent", mcp_server)
+        create_agent_by_id("orders", mcp_server)
+        create_agent_by_id("customers", mcp_server)
     """
-    agents_config = _get_agents_config()
+    agents_by_id = _get_agents_by_id()
 
-    if agent_name not in agents_config:
+    if agent_id not in agents_by_id:
         raise AgentsConfigError(
-            f"Agent '{agent_name}' non presente nel file XML. "
-            f"Controlla <Agent name=\"{agent_name}\"> in my_agents.xlm / my_agents.xml."
+            f"Nessun agent con id='{agent_id}' definito nel file XML. "
+            "Controlla <Agent id=\"...\"> in my_agents.xlm / my_agents.xml."
         )
 
-    cfg = agents_config[agent_name]
+    cfg = agents_by_id[agent_id]
+    name = cfg.get("name") or agent_id  # se manca name, uso l'id come nome interno
     instructions = cfg.get("instructions", "").strip()
 
     if not instructions:
         logger.warning(
-            "L'Agent '%s' è presente nel file XML ma senza istruzioni.",
-            agent_name,
+            "L'Agent con id='%s' è presente nel file XML ma senza istruzioni.",
+            agent_id,
         )
 
-    logger.info("Creo l'Agent '%s' a partire dalla configurazione XML...", agent_name)
+    logger.info(
+        "Creo l'Agent con id='%s' (name='%s') a partire dalla configurazione XML...",
+        agent_id,
+        name,
+    )
 
     return Agent(
-        name=agent_name,
+        name=name,
         instructions=instructions,
         mcp_servers=[mcp_server],
     )
 
 
-def get_available_agent_names() -> List[str]:
+def get_available_agent_ids() -> List[str]:
     """
-    Ritorna l'elenco dei nomi agent definiti nel file XML.
-    Utile per debug o per caricare agent in modo dinamico.
+    Ritorna l'elenco degli ID agent definiti nel file XML.
     """
-    return list(_get_agents_config().keys())
+    return list(_get_agents_by_id().keys())
 
 
 def load_bot_agents(mcp_server: MCPServerStdio) -> Tuple[Agent, Optional[Agent]]:
     """
     Crea gli agent principali per il bot Telegram, guidato dal file XML.
 
-    - Cerca un agent con id="orders"  -> diventa l'orders_agent (OBBLIGATORIO)
+    - Cerca un agent con id="orders"    -> diventa l'orders_agent (OBBLIGATORIO)
     - Cerca un agent con id="customers" -> diventa il customers_agent (OPZIONALE)
 
-    Se id non sono presenti, prova a usare i name di default:
-        "OrdersAgent" / "CustomersAgent".
+    Non usa NESSUN nome statico tipo 'OrdersAgent' o 'CustomersAgent':
+    si basa solo sugli id definiti nell'XML.
     """
-    cfg = _get_agents_config()
+    agents_by_id = _get_agents_by_id()
+    ids = list(agents_by_id.keys())
+    logger.info("load_bot_agents: agent IDs disponibili da XML: %s", ids)
 
-    # Mappa id -> name
-    id_to_name: Dict[str, str] = {}
-    for name, data in cfg.items():
-        agent_id = (data.get("id") or "").strip()
-        if agent_id:
-            id_to_name[agent_id] = name
-
-    # Determina name dell'agent ordini
-    orders_name = id_to_name.get("orders")
-    if orders_name is None and "OrdersAgent" in cfg:
-        orders_name = "OrdersAgent"
-
-    if not orders_name:
+    # ORDERS: obbligatorio
+    if "orders" not in agents_by_id:
         raise AgentsConfigError(
-            "Nessun agent con id='orders' (o name='OrdersAgent') trovato nel file XML. "
-            "Definisci ad esempio: <Agent id=\"orders\" name=\"OrdersAgent\">..."
+            "Nessun agent con id='orders' trovato nel file XML. "
+            "Definisci ad esempio: <Agent id=\"orders\" name=\"Qualcosa\">..."
         )
 
-    # Determina name dell'agent clienti (opzionale)
-    customers_name = id_to_name.get("customers")
-    if customers_name is None and "CustomersAgent" in cfg:
-        customers_name = "CustomersAgent"
+    orders_agent = create_agent_by_id("orders", mcp_server)
 
-    orders_agent = create_agent(orders_name, mcp_server)
-
+    # CUSTOMERS: opzionale
     customers_agent: Optional[Agent] = None
-    if customers_name:
-        customers_agent = create_agent(customers_name, mcp_server)
+    if "customers" in agents_by_id:
+        customers_agent = create_agent_by_id("customers", mcp_server)
 
     logger.info(
-        "load_bot_agents: orders_agent=%s, customers_agent=%s",
-        orders_name,
-        customers_name,
+        "load_bot_agents: creati orders_agent (id='orders') "
+        "e customers_agent (id='customers' presente=%s)",
+        "customers" in agents_by_id,
     )
 
     return orders_agent, customers_agent
