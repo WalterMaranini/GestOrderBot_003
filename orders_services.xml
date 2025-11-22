@@ -1,0 +1,41 @@
+<RestServices baseUrl="http://127.0.0.1:8001">
+  <!-- Dettaglio singolo ordine -->
+  <Service name="get_order" method="GET" path="/orders/{order_id}">
+    <Param name="order_id" required="true" location="path" type="string" />
+  </Service>
+
+  <!-- Lista ordini (es. ultimi N per cliente) -->
+  <Service name="get_orders" method="GET" path="/orders">
+    <Param name="customer_code" required="false" location="query" type="string" />
+    <Param name="limit"         required="false" location="query" type="int" />
+  </Service>
+
+  <!-- Creazione nuovo ordine -->
+  <Service name="create_order" method="POST" path="/orders">
+    <Param name="customer_code" required="true" location="body" type="string" />
+    <Param name="delivery_date" required="true" location="body" type="string" />
+    <Param name="lines"         required="true" location="body" type="json" />
+  </Service>
+
+  <!-- Creazione nuovo cliente -->
+  <Service name="create_customer" method="POST" path="/customers">
+    <Param name="code"     required="true"  location="body" type="string" />
+    <Param name="name"     required="true"  location="body" type="string" />
+    <Param name="address"  required="false" location="body" type="string" />
+    <Param name="city"     required="false" location="body" type="string" />
+    <Param name="province" required="false" location="body" type="string" />
+    <Param name="country"  required="false" location="body" type="string" />
+  </Service>
+
+  <!-- Lista clienti -->
+  <Service name="list_customers" method="GET" path="/customers">
+    <!-- nessun parametro obbligatorio -->
+  </Service>
+
+  <!-- Prezzi articoli -->
+  <Service name="get_price_list" method="GET" path="/prices">
+    <Param name="customer_code" required="false" location="query" type="string" />
+    <Param name="article_code"  required="false" location="query" type="string" />
+  </Service>
+
+</RestServices>
