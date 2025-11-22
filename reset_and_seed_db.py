@@ -27,7 +27,7 @@ def get_db_file_path() -> str:
     Assumiamo DATABASE_URL = "sqlite:///./db/orders.db" in db_models.py.
     """
     # Se vuoi essere più robusto, puoi passare il path via env o costante.
-    return os.path.join("db", "orders.db")
+    return os.path.join("database", "orders.db")
 
 
 def reset_database() -> None:

@@ -10,7 +10,7 @@
 # Pensata per essere chiamata dal tuo MCP server.
 #
 # Avvio:
-#   uvicorn orders_rest_api:app --host 127.0.0.1 --port 8001 --reload
+#   uvicorn rest_api:app --host 127.0.0.1 --port 8001 --reload
 
 from datetime import date, datetime
 from typing import List, Optional

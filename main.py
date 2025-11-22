@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 
 from agents.mcp import MCPServerStdio
 
-from my_agents import create_orders_agent, create_customers_agent
+from my_agents import load_bot_agents
 from telegram_bot import OrdersBot
 
 # ================== LOGGING ==================
@@ -41,7 +41,7 @@ async def main() -> None:
             sys.executable,
             "-m",
             "uvicorn",
-            "orders_rest_api:app",
+            "rest_api:app",
             "--host",
             "127.0.0.1",
             "--port",
@@ -77,12 +77,12 @@ async def main() -> None:
         ) as orders_mcp_server:
             logger.info("MCP server avviato, creo gli agent...")
 
-            orders_agent = create_orders_agent(orders_mcp_server)
-            customers_agent = create_customers_agent(orders_mcp_server)
+            # ================== CREAZIONE AGENT DAL FILE XML ==================
+            logger.info("Carico gli agent per il bot dal file XML (my_agents.xlm/xml)...")
+            orders_agent, customers_agent = load_bot_agents(orders_mcp_server)
 
-            logger.info("Creo il bot OrdersBot collegato ai due agent...")
+            logger.info("Creo il bot OrdersBot collegato agli agent...")
             bot = OrdersBot(orders_agent=orders_agent, customers_agent=customers_agent)
-
             try:
                 await bot.run()
             except Exception:

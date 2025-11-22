@@ -1,4 +1,7 @@
 import logging
+from pathlib import Path
+import xml.etree.ElementTree as ET
+from typing import Dict, List, Optional, Tuple
 
 from agents import Agent
 from agents.mcp import MCPServerStdio
@@ -6,131 +9,197 @@ from agents.mcp import MCPServerStdio
 logger = logging.getLogger(__name__)
 
 
-def create_orders_agent(mcp_server: MCPServerStdio) -> Agent:
-    """Crea e restituisce l'Agent dedicato alla gestione degli ORDINI."""
+class AgentsConfigError(Exception):
+    """Errore nella configurazione degli agent (file XML)."""
+    pass
 
-    instructions = (
-        "Sei un assistente per la gestione degli ORDINI di vendita.\n"
-        "Parli sempre in italiano, con tono professionale ma semplice.\n\n"
 
-        "Hai a disposizione un MCP server che espone servizi REST del gestionale.\n"
-        "Per usare questi servizi devi chiamare il tool MCP `call_rest_service` con:\n"
-        "- `service_name`: uno di questi valori esatti:\n"
-        "    * `create_order`   -> inserire un nuovo ordine\n"
-        "    * `get_order`      -> leggere il dettaglio di un ordine\n"
-        "    * `get_orders`     -> lista ordini\n"
-        "    * `get_price_list` -> prezzi/listini articoli\n"
-        "- `arguments`: un dizionario con i parametri richiesti dal servizio.\n\n"
+# Configurazione caricata da XML (lazy, solo al primo utilizzo)
+# Struttura:
+# {
+#   "OrdersAgent": {
+#       "id": "orders",
+#       "description": "...",
+#       "instructions": "..."
+#   },
+#   "CustomersAgent": {
+#       "id": "customers",
+#       ...
+#   },
+# }
+_AGENTS_CONFIG: Optional[Dict[str, Dict[str, str]]] = None
 
-        "Se hai dubbi sui parametri di un servizio, usa prima `list_rest_services` per\n"
-        "vedere la configurazione (path, metodo HTTP, parametri e dove metterli).\n\n"
 
-        "1) Creazione ordine (`create_order`):\n"
-        "   - Chiedi sempre all'utente:\n"
-        "       * codice cliente\n"
-        "       * data consegna (formato YYYY-MM-DD)\n"
-        "       * elenco righe (articolo + quantità)\n"
-        "   - Poi chiama `call_rest_service` con:\n"
-        "       service_name = \"create_order\"\n"
-        "       arguments = {\n"
-        "           \"customer_code\": \"...\",\n"
-        "           \"delivery_date\": \"YYYY-MM-DD\",\n"
-        "           \"lines\": [\n"
-        "               {\"article_code\": \"MP001\", \"quantity\": 10},\n"
-        "               {\"article_code\": \"MP002\", \"quantity\": 5}\n"
-        "           ]\n"
-        "       }\n\n"
+def _load_agents_from_xml() -> Dict[str, Dict[str, str]]:
+    """
+    Legge la configurazione degli agent da my_agents.xlm (o, in fallback, my_agents.xml)
+    e restituisce un dizionario keyed per 'name' (attributo name dell'XML).
+    """
+    primary = Path("my_agents.xlm")
+    fallback = Path("my_agents.xml")
 
-        "2) Dettaglio ordine (`get_order`):\n"
-        "   - Se l'utente chiede informazioni su un singolo ordine,\n"
-        "     chiedi/estrai l'id ordine e poi chiama:\n"
-        "       service_name = \"get_order\"\n"
-        "       arguments = {\"order_id\": <id ordine>}\n\n"
+    path: Optional[Path] = None
 
-        "3) Lista ordini (`get_orders`):\n"
-        "   - Se chiede la situazione ordini di un cliente o gli ultimi N ordini,\n"
-        "     usa:\n"
-        "       service_name = \"get_orders\"\n"
-        "       arguments.customer_code = codice cliente (se fornito)\n"
-        "       arguments.limit = numero massimo di ordini (default 10 se non specificato)\n\n"
+    if primary.exists():
+        path = primary
+    elif fallback.exists():
+        path = fallback
 
-        "4) Prezzi / listini (`get_price_list`):\n"
-        "   - Quando chiede prezzi o listini articoli:\n"
-        "       service_name = \"get_price_list\"\n"
-        "       arguments.customer_code = codice cliente (se noto)\n"
-        "       arguments.article_code  = codice articolo (se chiede un articolo specifico)\n\n"
+    if path is None:
+        raise AgentsConfigError(
+            "File XML degli agent non trovato. "
+            f"Ho cercato: {primary.resolve()} e {fallback.resolve()}"
+        )
 
-        "Dopo ogni chiamata REST:\n"
-        "- Se `ok == True`, riassumi i dati in modo chiaro (stato ordine, righe, prezzi, ecc.).\n"
-        "- Se `ok == False` o c'è un errore, spiega cosa è successo in modo comprensibile\n"
-        "  e chiedi eventualmente all'utente di correggere i dati.\n"
+    tree = ET.parse(path)
+    root = tree.getroot()
+
+    agents_config: Dict[str, Dict[str, str]] = {}
+
+    for agent_el in root.findall("Agent"):
+        name = agent_el.get("name")
+        agent_id = agent_el.get("id")
+
+        if not name:
+            logger.warning(
+                "Trovato un <Agent> senza attributo 'name' nel file %s",
+                path,
+            )
+            continue
+
+        desc_el = agent_el.find("Description")
+        instr_el = agent_el.find("Instructions")
+
+        description = (desc_el.text or "").strip() if desc_el is not None else ""
+        instructions = (instr_el.text or "").strip() if instr_el is not None else ""
+
+        if not instructions:
+            logger.warning(
+                "L'Agent '%s' nel file %s non ha istruzioni (Instructions vuoto).",
+                name,
+                path,
+            )
+
+        agents_config[name] = {
+            "id": agent_id or "",
+            "description": description,
+            "instructions": instructions,
+        }
+
+    if not agents_config:
+        raise AgentsConfigError(
+            f"Nessun <Agent> valido trovato nel file XML: {path.resolve()}"
+        )
+
+    logger.info(
+        "Caricati %d agent dal file di configurazione: %s",
+        len(agents_config),
+        path.resolve(),
     )
+    logger.info("Nomi agent caricati: %s", list(agents_config.keys()))
+    return agents_config
 
-    logger.info("Creo l'Agent per la gestione ordini (OrdersAgent)...")
 
-    agent = Agent(
-        name="OrdersAgent",
+def _get_agents_config() -> Dict[str, Dict[str, str]]:
+    """
+    Ritorna la configurazione degli agent, caricandola da XML alla prima chiamata.
+    """
+    global _AGENTS_CONFIG
+    if _AGENTS_CONFIG is None:
+        _AGENTS_CONFIG = _load_agents_from_xml()
+    return _AGENTS_CONFIG
+
+
+# ================== API PUBBLICA ==================
+
+
+def create_agent(agent_name: str, mcp_server: MCPServerStdio) -> Agent:
+    """
+    Crea un Agent generico a partire dalla configurazione letta dal file XML.
+
+    Esempi:
+        create_agent("OrdersAgent", mcp_server)
+        create_agent("CustomersAgent", mcp_server)
+    """
+    agents_config = _get_agents_config()
+
+    if agent_name not in agents_config:
+        raise AgentsConfigError(
+            f"Agent '{agent_name}' non presente nel file XML. "
+            f"Controlla <Agent name=\"{agent_name}\"> in my_agents.xlm / my_agents.xml."
+        )
+
+    cfg = agents_config[agent_name]
+    instructions = cfg.get("instructions", "").strip()
+
+    if not instructions:
+        logger.warning(
+            "L'Agent '%s' è presente nel file XML ma senza istruzioni.",
+            agent_name,
+        )
+
+    logger.info("Creo l'Agent '%s' a partire dalla configurazione XML...", agent_name)
+
+    return Agent(
+        name=agent_name,
         instructions=instructions,
         mcp_servers=[mcp_server],
     )
 
-    return agent
+
+def get_available_agent_names() -> List[str]:
+    """
+    Ritorna l'elenco dei nomi agent definiti nel file XML.
+    Utile per debug o per caricare agent in modo dinamico.
+    """
+    return list(_get_agents_config().keys())
 
 
-def create_customers_agent(mcp_server: MCPServerStdio) -> Agent:
-    """Crea e restituisce l'Agent dedicato alla gestione dei CLIENTI (anagrafica)."""
+def load_bot_agents(mcp_server: MCPServerStdio) -> Tuple[Agent, Optional[Agent]]:
+    """
+    Crea gli agent principali per il bot Telegram, guidato dal file XML.
 
-    instructions = (
-        "Sei un assistente per la gestione dell'ANAGRAFICA CLIENTI.\n"
-        "Parli sempre in italiano.\n\n"
+    - Cerca un agent con id="orders"  -> diventa l'orders_agent (OBBLIGATORIO)
+    - Cerca un agent con id="customers" -> diventa il customers_agent (OPZIONALE)
 
-        "Per interagire con il gestionale devi usare il tool MCP `call_rest_service`.\n"
-        "I servizi principali che usi sono:\n"
-        "- `create_customer` -> inserire un nuovo cliente\n"
-        "- `list_customers`  -> elencare i clienti\n\n"
+    Se id non sono presenti, prova a usare i name di default:
+        "OrdersAgent" / "CustomersAgent".
+    """
+    cfg = _get_agents_config()
 
-        "1) Creazione nuovo cliente (`create_customer`):\n"
-        "   - Prima di chiamare il servizio, raccogli SEMPRE questi dati:\n"
-        "       * codice cliente (obbligatorio)\n"
-        "       * ragione sociale / nome cliente (obbligatorio)\n"
-        "       * indirizzo (opzionale)\n"
-        "       * città (opzionale)\n"
-        "       * provincia (opzionale)\n"
-        "       * nazione (opzionale, default IT se non specificata)\n"
-        "   - Verifica con l'utente che il codice cliente non sia palesemente errato.\n"
-        "   - Poi chiama `call_rest_service` con:\n"
-        "       service_name = \"create_customer\"\n"
-        "       arguments = {\n"
-        "           \"code\": \"CODICE\",\n"
-        "           \"name\": \"RAGIONE SOCIALE\",\n"
-        "           \"address\": \"...\" (se fornito),\n"
-        "           \"city\": \"...\" (se fornita),\n"
-        "           \"province\": \"...\" (se fornita),\n"
-        "           \"country\": \"IT\" o altro paese\n"
-        "       }\n\n"
+    # Mappa id -> name
+    id_to_name: Dict[str, str] = {}
+    for name, data in cfg.items():
+        agent_id = (data.get("id") or "").strip()
+        if agent_id:
+            id_to_name[agent_id] = name
 
-        "   - Se il servizio REST risponde con errore di 'cliente già esistente',\n"
-        "     spiega chiaramente il problema e chiedi se vuole usare il cliente esistente\n"
-        "     o scegliere un altro codice.\n\n"
+    # Determina name dell'agent ordini
+    orders_name = id_to_name.get("orders")
+    if orders_name is None and "OrdersAgent" in cfg:
+        orders_name = "OrdersAgent"
 
-        "2) Lista clienti (`list_customers`):\n"
-        "   - Se l'utente chiede di vedere l'elenco clienti, chiama:\n"
-        "       service_name = \"list_customers\"\n"
-        "       arguments = {}  (nessun parametro obbligatorio)\n"
-        "   - Riassumi poi la lista in modo leggibile (codice + ragione sociale).\n\n"
+    if not orders_name:
+        raise AgentsConfigError(
+            "Nessun agent con id='orders' (o name='OrdersAgent') trovato nel file XML. "
+            "Definisci ad esempio: <Agent id=\"orders\" name=\"OrdersAgent\">..."
+        )
 
-        "IMPORTANTE:\n"
-        "- Non inserire mai un cliente senza codice e ragione sociale.\n"
-        "- Se qualche informazione necessaria manca, chiedila esplicitamente\n"
-        "  all'utente con una domanda chiara.\n"
+    # Determina name dell'agent clienti (opzionale)
+    customers_name = id_to_name.get("customers")
+    if customers_name is None and "CustomersAgent" in cfg:
+        customers_name = "CustomersAgent"
+
+    orders_agent = create_agent(orders_name, mcp_server)
+
+    customers_agent: Optional[Agent] = None
+    if customers_name:
+        customers_agent = create_agent(customers_name, mcp_server)
+
+    logger.info(
+        "load_bot_agents: orders_agent=%s, customers_agent=%s",
+        orders_name,
+        customers_name,
     )
 
-    logger.info("Creo l'Agent per la gestione clienti (CustomersAgent)...")
-
-    agent = Agent(
-        name="CustomersAgent",
-        instructions=instructions,
-        mcp_servers=[mcp_server],
-    )
-
-    return agent
+    return orders_agent, customers_agent
