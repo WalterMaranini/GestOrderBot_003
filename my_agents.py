@@ -20,23 +20,25 @@ class AgentsConfigError(Exception):
 #   "orders": {
 #       "name": "OrdersAgent",
 #       "description": "...",
-#       "instructions": "..."
+#       "role": "...",
+#       "language_tone": "...",
+#       "tools_usage": "...",
+#       "main_flows": "...",
+#       "error_handling": "...",
+#       "extra_notes": "...",
+#       "instructions": "TESTO COMPLETO PER L'LLM"
 #   },
-#   "customers": {
-#       "name": "CustomersAgent",
-#       ...
-#   },
+#   ...
 # }
 _AGENTS_BY_ID: Optional[Dict[str, Dict[str, str]]] = None
 
 
 def _load_agents_from_xml() -> Dict[str, Dict[str, str]]:
     """
-    Legge la configurazione degli agent da my_agents.xlm (o, in fallback,
-    my_agents.xml) e restituisce un dizionario indicizzato per 'id'.
+    Legge la configurazione degli agent da my_agents.xml
+    e restituisce un dizionario indicizzato per 'id'.
     """
     primary = Path("my_agents.xml")
-
     path: Optional[Path] = None
 
     if primary.exists():
@@ -65,10 +67,46 @@ def _load_agents_from_xml() -> Dict[str, Dict[str, str]]:
             continue
 
         desc_el = agent_el.find("Description")
+        description = (desc_el.text or "").strip() if desc_el is not None else ""
+
+        # ====== nuova struttura Instructions con sottoproprietà ======
         instr_el = agent_el.find("Instructions")
 
-        description = (desc_el.text or "").strip() if desc_el is not None else ""
-        instructions = (instr_el.text or "").strip() if instr_el is not None else ""
+        role = ""
+        language_tone = ""
+        tools_usage = ""
+        main_flows = ""
+        error_handling = ""
+        extra_notes = ""
+        instructions = ""
+
+        if instr_el is not None:
+            children = list(instr_el)
+
+            if children:
+                def _get(tag: str) -> str:
+                    return (instr_el.findtext(tag, default="") or "").strip()
+
+                role = _get("Role")
+                language_tone = _get("LanguageTone")
+                tools_usage = _get("ToolsUsage")
+                main_flows = _get("MainFlows")
+                error_handling = _get("ErrorHandling")
+                extra_notes = _get("ExtraNotes")
+
+                parts = [
+                    role,
+                    language_tone,
+                    tools_usage,
+                    main_flows,
+                    error_handling,
+                    extra_notes,
+                ]
+                parts = [p for p in parts if p]
+                instructions = "\n\n".join(parts)
+            else:
+                # compatibilità con vecchia struttura: testo unico in <Instructions>
+                instructions = (instr_el.text or "").strip()
 
         if not instructions:
             logger.warning(
@@ -78,8 +116,14 @@ def _load_agents_from_xml() -> Dict[str, Dict[str, str]]:
             )
 
         agents_by_id[agent_id] = {
-            "name": name,  # etichetta "umana", opzionale
+            "name": name or agent_id,  # etichetta "umana", opzionale
             "description": description,
+            "role": role,
+            "language_tone": language_tone,
+            "tools_usage": tools_usage,
+            "main_flows": main_flows,
+            "error_handling": error_handling,
+            "extra_notes": extra_notes,
             "instructions": instructions,
         }
 
@@ -124,7 +168,7 @@ def create_agent_by_id(agent_id: str, mcp_server: MCPServerStdio) -> Agent:
     if agent_id not in agents_by_id:
         raise AgentsConfigError(
             f"Nessun agent con id='{agent_id}' definito nel file XML. "
-            "Controlla <Agent id=\"...\"> in my_agents.xlm / my_agents.xml."
+            "Controlla <Agent id=\"...\"> in my_agents.xml."
         )
 
     cfg = agents_by_id[agent_id]
@@ -175,7 +219,7 @@ def load_bot_agents(mcp_server: MCPServerStdio) -> Tuple[Agent, Optional[Agent]]
     if "orders" not in agents_by_id:
         raise AgentsConfigError(
             "Nessun agent con id='orders' trovato nel file XML. "
-            "Definisci ad esempio: <Agent id=\"orders\" name=\"Qualcosa\">..."
+            'Definisci ad esempio: <Agent id="orders" name="Qualcosa">...'
         )
 
     orders_agent = create_agent_by_id("orders", mcp_server)

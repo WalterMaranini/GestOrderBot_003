@@ -4,7 +4,6 @@ from pathlib import Path
 import xml.etree.ElementTree as ET
 
 XML_FILE = Path("my_agents.xml")
-ALT_XML_FILE = Path("my_agents.xlm")
 
 
 class AgentsXmlEditor(tk.Tk):
@@ -14,7 +13,9 @@ class AgentsXmlEditor(tk.Tk):
         self.title("Editor my_agents.xml")
         self.geometry("1000x600")
 
-        # Lista agent in memoria: ogni elemento è un dict con chiavi: id, name, description, instructions
+        # Lista agent in memoria: ogni elemento è un dict con chiavi:
+        # id, name, description, role, language_tone, tools_usage,
+        # main_flows, error_handling, extra_notes
         self.agents = []
         self.current_index = None  # indice dell'agente selezionato
         self.dirty = False         # True se ci sono modifiche non salvate
@@ -47,13 +48,14 @@ class AgentsXmlEditor(tk.Tk):
         for b in (btn_varia, btn_salva, btn_abbandona, btn_inserisci, btn_elimina):
             b.pack(side=tk.LEFT, padx=5)
 
-        # Corpo: sinistra (griglia), destra (dettaglio)
-        body = ttk.Frame(self, padding=5)
+        # Corpo: sinistra (griglia), destra (dettaglio) con PanedWindow per dare
+        # più spazio alla parte destra (peso maggiore).
+        body = ttk.Panedwindow(self, orient=tk.HORIZONTAL)
         body.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
 
         # Sinistra: elenco agent
         left_frame = ttk.Frame(body)
-        left_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        body.add(left_frame, weight=1)  # peso minore
 
         lbl_list = ttk.Label(left_frame, text="Elenco agenti")
         lbl_list.pack(side=tk.TOP, anchor="w")
@@ -85,11 +87,13 @@ class AgentsXmlEditor(tk.Tk):
         self.tree.bind("<Return>", self._on_tree_edit_request)
         self.tree.bind("<Double-1>", self._on_tree_edit_request)
 
-        # Destra: dettaglio agente
+        # Destra: dettaglio agente (più larga, weight più alto)
         right_frame = ttk.Frame(body, padding=5, relief="groove")
-        right_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
+        body.add(right_frame, weight=3)
 
-        ttk.Label(right_frame, text="Dettaglio agente").grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 5))
+        ttk.Label(right_frame, text="Dettaglio agente").grid(
+            row=0, column=0, columnspan=3, sticky="w", pady=(0, 5)
+        )
 
         ttk.Label(right_frame, text="ID:").grid(row=1, column=0, sticky="e", padx=5, pady=2)
         self.var_id = tk.StringVar()
@@ -103,43 +107,60 @@ class AgentsXmlEditor(tk.Tk):
 
         ttk.Label(right_frame, text="Descrizione:").grid(row=3, column=0, sticky="ne", padx=5, pady=2)
         self.txt_description = tk.Text(right_frame, height=3, wrap="word")
-        self.txt_description.grid(row=3, column=1, sticky="ew", padx=5, pady=2)
+        self.txt_description.grid(row=3, column=1, columnspan=2, sticky="ew", padx=5, pady=2)
 
-        ttk.Label(right_frame, text="Instructions:").grid(row=4, column=0, sticky="ne", padx=5, pady=2)
-        self.txt_instructions = tk.Text(right_frame, height=15, wrap="word")
-        self.txt_instructions.grid(row=4, column=1, sticky="nsew", padx=5, pady=2)
+        # --- Sottoproprietà Instructions ---
 
-        # Scrollbar per instructions
-        instr_scroll = ttk.Scrollbar(right_frame, orient="vertical", command=self.txt_instructions.yview)
-        instr_scroll.grid(row=4, column=2, sticky="ns")
-        self.txt_instructions.configure(yscrollcommand=instr_scroll.set)
+        ttk.Label(right_frame, text="Ruolo / scopo:").grid(row=4, column=0, sticky="ne", padx=5, pady=2)
+        self.txt_role = tk.Text(right_frame, height=3, wrap="word")
+        self.txt_role.grid(row=4, column=1, columnspan=2, sticky="ew", padx=5, pady=2)
+
+        ttk.Label(right_frame, text="Linguaggio e tono:").grid(row=5, column=0, sticky="ne", padx=5, pady=2)
+        self.txt_language_tone = tk.Text(right_frame, height=3, wrap="word")
+        self.txt_language_tone.grid(row=5, column=1, columnspan=2, sticky="ew", padx=5, pady=2)
+
+        ttk.Label(right_frame, text="Uso tool / MCP / REST:").grid(row=6, column=0, sticky="ne", padx=5, pady=2)
+        self.txt_tools_usage = tk.Text(right_frame, height=4, wrap="word")
+        self.txt_tools_usage.grid(row=6, column=1, columnspan=2, sticky="ew", padx=5, pady=2)
+
+        ttk.Label(right_frame, text="Flussi operativi principali:").grid(row=7, column=0, sticky="ne", padx=5, pady=2)
+        self.txt_main_flows = tk.Text(right_frame, height=8, wrap="word")
+        self.txt_main_flows.grid(row=7, column=1, sticky="nsew", padx=5, pady=2)
+
+        main_flows_scroll = ttk.Scrollbar(right_frame, orient="vertical", command=self.txt_main_flows.yview)
+        main_flows_scroll.grid(row=7, column=2, sticky="ns")
+        self.txt_main_flows.configure(yscrollcommand=main_flows_scroll.set)
+
+        ttk.Label(right_frame, text="Gestione errori / note extra:").grid(row=8, column=0, sticky="ne", padx=5, pady=2)
+        self.txt_error_handling = tk.Text(right_frame, height=4, wrap="word")
+        self.txt_error_handling.grid(row=8, column=1, columnspan=2, sticky="ew", padx=5, pady=2)
+
+        ttk.Label(right_frame, text="Note aggiuntive (facoltative):").grid(row=9, column=0, sticky="ne", padx=5, pady=2)
+        self.txt_extra_notes = tk.Text(right_frame, height=3, wrap="word")
+        self.txt_extra_notes.grid(row=9, column=1, columnspan=2, sticky="ew", padx=5, pady=2)
 
         # Layout weight per allargare bene
         right_frame.columnconfigure(1, weight=1)
-        right_frame.rowconfigure(4, weight=1)
+        right_frame.rowconfigure(7, weight=1)
+
+        # Salvo il riferimento al frame destro se servisse in futuro
+        self.right_frame = right_frame
 
     # ===================== CARICAMENTO / SALVATAGGIO XML =====================
 
     def _load_agents(self):
         """Carica gli agent dal file XML, se presente."""
-        path_to_use = None
-
-        if XML_FILE.exists():
-            path_to_use = XML_FILE
-        elif ALT_XML_FILE.exists():
-            path_to_use = ALT_XML_FILE
-
-        if path_to_use is None:
+        if not XML_FILE.exists():
             # Nessun file: lista vuota
             self.agents = []
             self.dirty = False
             return
 
         try:
-            tree = ET.parse(path_to_use)
+            tree = ET.parse(XML_FILE)
             root = tree.getroot()
         except Exception as e:
-            messagebox.showerror("Errore XML", f"Impossibile leggere {path_to_use}:\n{e}")
+            messagebox.showerror("Errore XML", f"Impossibile leggere {XML_FILE}:\n{e}")
             self.agents = []
             self.dirty = False
             return
@@ -150,17 +171,44 @@ class AgentsXmlEditor(tk.Tk):
             name = (agent_el.get("name") or "").strip()
 
             desc_el = agent_el.find("Description")
+            description = (desc_el.text or "") if desc_el is not None else ""
+
             instr_el = agent_el.find("Instructions")
 
-            description = (desc_el.text or "") if desc_el is not None else ""
-            instructions = (instr_el.text or "") if instr_el is not None else ""
+            role = ""
+            language_tone = ""
+            tools_usage = ""
+            main_flows = ""
+            error_handling = ""
+            extra_notes = ""
+
+            if instr_el is not None:
+                children = list(instr_el)
+                if children:
+                    def _get(tag: str) -> str:
+                        return instr_el.findtext(tag, default="") or ""
+
+                    role = _get("Role")
+                    language_tone = _get("LanguageTone")
+                    tools_usage = _get("ToolsUsage")
+                    main_flows = _get("MainFlows")
+                    error_handling = _get("ErrorHandling")
+                    extra_notes = _get("ExtraNotes")
+                else:
+                    # compatibilità con vecchio XML: testo unico
+                    main_flows = instr_el.text or ""
 
             agents.append(
                 {
                     "id": agent_id,
                     "name": name,
                     "description": description,
-                    "instructions": instructions,
+                    "role": role,
+                    "language_tone": language_tone,
+                    "tools_usage": tools_usage,
+                    "main_flows": main_flows,
+                    "error_handling": error_handling,
+                    "extra_notes": extra_notes,
                 }
             )
 
@@ -175,7 +223,13 @@ class AgentsXmlEditor(tk.Tk):
             agent_id = agent.get("id", "").strip()
             name = agent.get("name", "").strip()
             description = agent.get("description", "")
-            instructions = agent.get("instructions", "")
+
+            role = agent.get("role", "")
+            language_tone = agent.get("language_tone", "")
+            tools_usage = agent.get("tools_usage", "")
+            main_flows = agent.get("main_flows", "")
+            error_handling = agent.get("error_handling", "")
+            extra_notes = agent.get("extra_notes", "")
 
             agent_el = ET.SubElement(root, "Agent")
             if agent_id:
@@ -187,7 +241,19 @@ class AgentsXmlEditor(tk.Tk):
             desc_el.text = description
 
             instr_el = ET.SubElement(agent_el, "Instructions")
-            instr_el.text = instructions
+
+            def _add_if_not_empty(tag: str, value: str):
+                value = (value or "").strip()
+                if value:
+                    el = ET.SubElement(instr_el, tag)
+                    el.text = value
+
+            _add_if_not_empty("Role", role)
+            _add_if_not_empty("LanguageTone", language_tone)
+            _add_if_not_empty("ToolsUsage", tools_usage)
+            _add_if_not_empty("MainFlows", main_flows)
+            _add_if_not_empty("ErrorHandling", error_handling)
+            _add_if_not_empty("ExtraNotes", extra_notes)
 
         tree = ET.ElementTree(root)
         try:
@@ -241,7 +307,13 @@ class AgentsXmlEditor(tk.Tk):
         self.var_id.set("")
         self.var_name.set("")
         self.txt_description.delete("1.0", tk.END)
-        self.txt_instructions.delete("1.0", tk.END)
+
+        self.txt_role.delete("1.0", tk.END)
+        self.txt_language_tone.delete("1.0", tk.END)
+        self.txt_tools_usage.delete("1.0", tk.END)
+        self.txt_main_flows.delete("1.0", tk.END)
+        self.txt_error_handling.delete("1.0", tk.END)
+        self.txt_extra_notes.delete("1.0", tk.END)
 
     def _load_agent_to_form(self, index: int):
         """Carica i dati dell'agente indicato nell'area di dettaglio."""
@@ -252,10 +324,27 @@ class AgentsXmlEditor(tk.Tk):
         agent = self.agents[index]
         self.var_id.set(agent.get("id", ""))
         self.var_name.set(agent.get("name", ""))
+
         self.txt_description.delete("1.0", tk.END)
         self.txt_description.insert("1.0", agent.get("description", "") or "")
-        self.txt_instructions.delete("1.0", tk.END)
-        self.txt_instructions.insert("1.0", agent.get("instructions", "") or "")
+
+        self.txt_role.delete("1.0", tk.END)
+        self.txt_role.insert("1.0", agent.get("role", "") or "")
+
+        self.txt_language_tone.delete("1.0", tk.END)
+        self.txt_language_tone.insert("1.0", agent.get("language_tone", "") or "")
+
+        self.txt_tools_usage.delete("1.0", tk.END)
+        self.txt_tools_usage.insert("1.0", agent.get("tools_usage", "") or "")
+
+        self.txt_main_flows.delete("1.0", tk.END)
+        self.txt_main_flows.insert("1.0", agent.get("main_flows", "") or "")
+
+        self.txt_error_handling.delete("1.0", tk.END)
+        self.txt_error_handling.insert("1.0", agent.get("error_handling", "") or "")
+
+        self.txt_extra_notes.delete("1.0", tk.END)
+        self.txt_extra_notes.insert("1.0", agent.get("extra_notes", "") or "")
 
     def _apply_form_to_current_agent(self):
         """Scrive i dati del form nell'agente selezionato."""
@@ -270,7 +359,13 @@ class AgentsXmlEditor(tk.Tk):
         agent["id"] = self.var_id.get().strip()
         agent["name"] = self.var_name.get().strip()
         agent["description"] = self.txt_description.get("1.0", tk.END).rstrip("\n")
-        agent["instructions"] = self.txt_instructions.get("1.0", tk.END).rstrip("\n")
+
+        agent["role"] = self.txt_role.get("1.0", tk.END).rstrip("\n")
+        agent["language_tone"] = self.txt_language_tone.get("1.0", tk.END).rstrip("\n")
+        agent["tools_usage"] = self.txt_tools_usage.get("1.0", tk.END).rstrip("\n")
+        agent["main_flows"] = self.txt_main_flows.get("1.0", tk.END).rstrip("\n")
+        agent["error_handling"] = self.txt_error_handling.get("1.0", tk.END).rstrip("\n")
+        agent["extra_notes"] = self.txt_extra_notes.get("1.0", tk.END).rstrip("\n")
 
         self.dirty = True
         self._refresh_tree()
@@ -302,7 +397,12 @@ class AgentsXmlEditor(tk.Tk):
             "id": "",
             "name": "",
             "description": "",
-            "instructions": "",
+            "role": "",
+            "language_tone": "",
+            "tools_usage": "",
+            "main_flows": "",
+            "error_handling": "",
+            "extra_notes": "",
         }
         self.agents.append(new_agent)
         self.dirty = True
