@@ -74,6 +74,7 @@ async def main() -> None:
                 "args": [mcp_script],
             },
             cache_tools_list=True,  # evita di richiedere i tool ad ogni run
+            client_session_timeout_seconds=30.0,  # timeout più lungo per il Raspberry
         ) as orders_mcp_server:
             logger.info("MCP server avviato, creo gli agent...")
 
