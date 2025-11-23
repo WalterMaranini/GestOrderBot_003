@@ -38,4 +38,17 @@
     <Param name="article_code"  required="false" location="query" type="string" />
   </Service>
 
+  <!-- Creazione nuovo articolo -->
+  <Service name="create_article" method="POST" path="/articles">
+    <Param name="code"        required="true"  location="body" type="string" />
+    <Param name="description" required="true"  location="body" type="string" />
+    <Param name="unit"        required="true" location="body" type="string" />
+  </Service>
+
+  <!-- Lista articoli -->
+  <Service name="list_articles" method="GET" path="/articles">
+    <!-- nessun parametro obbligatorio per ora -->
+  </Service>
+
+
 </RestServices>

@@ -35,20 +35,17 @@ def _load_agents_from_xml() -> Dict[str, Dict[str, str]]:
     Legge la configurazione degli agent da my_agents.xlm (o, in fallback,
     my_agents.xml) e restituisce un dizionario indicizzato per 'id'.
     """
-    primary = Path("my_agents.xlm")
-    fallback = Path("my_agents.xml")
+    primary = Path("my_agents.xml")
 
     path: Optional[Path] = None
 
     if primary.exists():
         path = primary
-    elif fallback.exists():
-        path = fallback
 
     if path is None:
         raise AgentsConfigError(
             "File XML degli agent non trovato. "
-            f"Ho cercato: {primary.resolve()} e {fallback.resolve()}"
+            f"Ho cercato: {primary.resolve()}"
         )
 
     tree = ET.parse(path)

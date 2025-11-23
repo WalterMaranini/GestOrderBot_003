@@ -160,7 +160,7 @@ def load_rest_config_from_xml(path: str) -> RestConfig:
 # ===================== MCP SERVER (FastMCP) =====================
 
 # Legge il path del file XML da variabile d'ambiente, con default
-REST_XML_PATH = os.getenv("ORDERS_REST_XML_PATH", "orders_services.xml")
+REST_XML_PATH = os.getenv("ORDERS_REST_XML_PATH", "my_services.xml")
 
 try:
     REST_CONFIG = load_rest_config_from_xml(REST_XML_PATH)
