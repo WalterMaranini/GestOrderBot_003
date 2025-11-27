@@ -1,0 +1,71 @@
+# =========================
+# AMBIENTE / VENV
+# =========================
+.venv/
+venv/
+ENV/
+env/
+*.pyc
+__pycache__/
+*.pyo
+*.pyd
+*.pdb
+
+# =========================
+# IDE / EDITOR
+# =========================
+.idea/
+.vscode/
+*.iml
+
+# =========================
+# FILE DI CONFIGURAZIONE SENSIBILI
+# =========================
+.env
+.env.*
+!env.example
+!.env.example
+*.secret
+*.key
+
+# =========================
+# DATABASE / FILE LOCALI
+# =========================
+database/*.db
+database/*.sqlite
+database/*.sqlite3
+*.db
+*.sqlite
+*.sqlite3
+
+# Se hai file specifici:
+orders.db
+sessions.db
+
+# =========================
+# LOG / TEMP
+# =========================
+logs/
+*.log
+*.tmp
+tmp/
+temp/
+
+# =========================
+# CACHE VARIE
+# =========================
+.mypy_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+dist/
+build/
+*.egg-info/
+*.egg
+
+# =========================
+# SISTEMA OPERATIVO
+# =========================
+.DS_Store
+Thumbs.db
+desktop.ini

@@ -13,6 +13,9 @@ from agents.mcp import MCPServerStdio
 from my_agents import get_available_agent_ids, create_agent_by_id
 from telegram_bot import OrdersBot
 
+import truststore  # <--- AGGIUNGI QUESTO
+truststore.inject_into_ssl()  # <--- E QUESTO, SUBITO DOPO L'IMPORT
+
 # ================== LOGGING ==================
 
 logging.basicConfig(

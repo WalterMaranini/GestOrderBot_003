@@ -1,54 +1,119 @@
+<?xml version='1.0' encoding='utf-8'?>
 <RestServices baseUrl="http://127.0.0.1:8001">
-  <!-- Dettaglio singolo ordine -->
   <Service name="get_order" method="GET" path="/orders/{order_id}">
     <Param name="order_id" required="true" location="path" type="string" />
   </Service>
-
-  <!-- Lista ordini (es. ultimi N per cliente) -->
   <Service name="get_orders" method="GET" path="/orders">
     <Param name="customer_code" required="false" location="query" type="string" />
-    <Param name="limit"         required="false" location="query" type="int" />
+    <Param name="limit" required="false" location="query" type="int" />
   </Service>
-
-  <!-- Creazione nuovo ordine -->
-  <Service name="create_order" method="POST" path="/orders">
-    <Param name="customer_code" required="true" location="body" type="string" />
-    <Param name="delivery_date" required="true" location="body" type="string" />
-    <Param name="lines"         required="true" location="body" type="json" />
-  </Service>
-
-  <!-- Creazione nuovo cliente -->
   <Service name="create_customer" method="POST" path="/customers">
-    <Param name="code"     required="true"  location="body" type="string" />
-    <Param name="name"     required="true"  location="body" type="string" />
-    <Param name="address"  required="false" location="body" type="string" />
-    <Param name="city"     required="false" location="body" type="string" />
+    <Param name="code" required="true" location="body" type="string" />
+    <Param name="name" required="true" location="body" type="string" />
+    <Param name="address" required="false" location="body" type="string" />
+    <Param name="city" required="false" location="body" type="string" />
     <Param name="province" required="false" location="body" type="string" />
-    <Param name="country"  required="false" location="body" type="string" />
+    <Param name="country" required="false" location="body" type="string" />
   </Service>
-
-  <!-- Lista clienti -->
-  <Service name="list_customers" method="GET" path="/customers">
-    <!-- nessun parametro obbligatorio -->
-  </Service>
-
-  <!-- Prezzi articoli -->
+  <Service name="list_customers" method="GET" path="/customers" />
   <Service name="get_price_list" method="GET" path="/prices">
     <Param name="customer_code" required="false" location="query" type="string" />
-    <Param name="article_code"  required="false" location="query" type="string" />
+    <Param name="article_code" required="false" location="query" type="string" />
   </Service>
-
-  <!-- Creazione nuovo articolo -->
   <Service name="create_article" method="POST" path="/articles">
-    <Param name="code"        required="true"  location="body" type="string" />
-    <Param name="description" required="true"  location="body" type="string" />
-    <Param name="unit"        required="true" location="body" type="string" />
+    <Param name="code" required="true" location="body" type="string" />
+    <Param name="description" required="true" location="body" type="string" />
+    <Param name="unit" required="true" location="body" type="string" />
+  </Service>
+  <Service name="list_articles" method="GET" path="/articles" />
+
+  <Service name="crea_cliente_esolver" method="POST" path="/api/ES_CLIENTE/App-Sistemi/Crea" baseUrlOverride="http://todevsched0003:9050">
+
+    
+    <Header name="X-BC-Gruppo" value="WM" />
+    <Header name="X-BC-Authorization" env="BC_AUTH_TOKEN" />
+    <Header name="Content-Type" value="application/json" />
+    <Header name="Accept" value="application/json" />
+
+    
+    <Param name="Parametri" required="true" location="body" type="object">
+      
+      <Field name="TipoAnagrafica" type="int" required="true" />
+      <Field name="TipoSoggetto" type="int" required="true" />
+      <Field name="TipoSoggettoFTE" type="int" required="false" />
+      <Field name="CodClasseContabile" type="string" required="true" />
+
+      
+      <Field name="Indirizzi" type="array" required="true">
+        <Item type="object">
+          
+          <Field name="NumProgr" type="int" required="true" />
+          <Field name="CodAlternativo" type="string" required="false" />
+          <Field name="RagSoc1" type="string" required="true" />
+          <Field name="RagSoc2" type="string" required="false" />
+          <Field name="Indirizzo" type="string" required="true" />
+          <Field name="Localita" type="string" required="true" />
+          <Field name="Provincia" type="string" required="true" />
+          <Field name="CodStato" type="string" required="true" />
+        </Item>
+      </Field>
+    </Param>
+  </Service>
+  <Service name="lista_clienti_esolver" method="POST" path="/report/App-Sistemi/LISTASINCLI" baseUrlOverride="http://todevsched0003:9050">
+
+    
+    <Header name="X-BC-Gruppo" value="WM" />
+    <Header name="X-BC-PrefissoCampiReport" value="true" />
+    <Header name="X-BC-Authorization" env="BC_AUTH_TOKEN" />
+    <Header name="Content-Type" value="application/json" />
+    <Header name="Accept" value="application/json" />
+    <Param name="Skip" required="true" location="body" type="int" />
+    <Param name="Take" required="true" location="body" type="int" />
+    <Param name="Filters" required="true" location="body" type="json" />
   </Service>
 
-  <!-- Lista articoli -->
-  <Service name="list_articles" method="GET" path="/articles">
-    <!-- nessun parametro obbligatorio per ora -->
+  <Service name="leggi_cliente" method="POST" path="/api/ES_CLIENTE/App-Sistemi/Leggi" baseUrlOverride="http://todevsched0003:9050">
+    <Header name="X-BC-Gruppo" value="WM" />
+    <Header name="X-BC-Authorization" env="BC_AUTH_TOKEN" value="oF8ZnG8EwCKyBPASvlkKgaRzY9H/cxGy3jWLBkt0v6SKOcsxJCshKYOY6xn/4CSs6F6cTGpbY4He3lOG2R/6nWwnhzTROZHByesbbBabfjWkj6TemEIAnvYsK7nBNKGF7PAKdX5nQF93Ft3pdeYNItrWq/cSLQ1SEfYM+LMKv1TWwzrb3DtDfIOdLianex0r" />
+    <Header name="Accept" value="application/json" />
+    <Param name="CodCliFor" required="true" location="body" type="int" />
   </Service>
+
+  <Service name="crea_ordine" method="POST" path="/api/ES_ORV/App-Sistemi/Crea" baseUrlOverride="http://todevsched0003:9050">
+
+  <Header name="X-BC-Gruppo" value="WM" />
+  <Header name="X-BC-Authorization" env="BC_AUTH_TOKEN" value="oF8ZnG8EwCKyBPASvlkKgaRzY9H/cxGy3jWLBkt0v6SKOcsxJCshKYOY6xn/4CSs6F6cTGpbY4He3lOG2R/6nWwnhzTROZHByesbbBabfjWkj6TemEIAnvYsK7nBNKGF7PAKdX5nQF93Ft3pdeYNItrWq/cSLQ1SEfYM+LMKv1TWwzrb3DtDfIOdLianex0r" />
+  <Header name="Content-Type" value="application/json" />
+  <Header name="Accept" value="application/json" />
+
+  <Param name="Parametri" required="true" location="body" type="object">
+
+    <Field name="CodTipoDoc" type="int" required="true" />
+    <Field name="CodCliFor" type="int" required="true" />
+    <Field name="Righe" type="array" required="true">
+      <Item type="object">
+        <Field name="TipoRiga" type="int" required="false" />
+        <Field name="CodArt" type="string" required="false" />
+        <Field name="QtaDaImputare" type="int" required="false" />
+        <Field name="Prezzo" type="number" required="false" />
+        <Field name="PercSconto1" type="int" required="false" />
+        <Field name="PercSconto2" type="int" required="false" />
+        <Field name="PercSconto3" type="int" required="false" />
+        <Field name="PercSconto4" type="int" required="false" />
+        <Field name="PercSconto5" type="int" required="false" />
+        <Field name="DataConsegnaRich" type="string" required="false" />
+        <Field name=" AllegatiAnnotazioni" type="array" required="false">
+          <Item type="object">
+            <Field name="NumProgrAllegato" type="int" required="false" />
+            <Field name="Tipologia" type="int" required="false" />
+            <Field name="NotaAllegato" type="string" required="false" />
+          </Item>
+        </Field>
+      </Item>
+    </Field>
+  </Param>
+</Service>
+
 
 
 </RestServices>

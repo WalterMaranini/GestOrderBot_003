@@ -19,6 +19,8 @@ from openai import OpenAI
 
 from agents import Agent, Runner, SQLiteSession
 
+from telegram.request import HTTPXRequest
+
 logger = logging.getLogger(__name__)
 
 
@@ -39,6 +41,14 @@ class OrdersBot:
     def __init__(self, agents: Dict[str, Agent], default_agent_id: str = "orders") -> None:
         # Carica variabili da .env (OPENAI_API_KEY, TELEGRAM_BOT_TOKEN, ecc.)
         load_dotenv()
+
+        # Log "sicuro" della API key OpenAI usata
+        api_key = os.getenv("OPENAI_API_KEY", "")
+        if not api_key:
+            logger.warning("OPENAI_API_KEY NON impostata nelle variabili d'ambiente!")
+        else:
+            masked = api_key[:8] + "..." + api_key[-4:]
+            logger.info("OPENAI_API_KEY attiva (parziale): %s", masked)
 
         self.telegram_token = os.getenv("TELEGRAM_BOT_TOKEN")
         if not self.telegram_token:
@@ -296,7 +306,7 @@ class OrdersBot:
             )
 
             reply_text = result.final_output or "Non ho ottenuto alcuna risposta dall'agent."
-            await update.message.reply_text(reply_text, parse_mode="Markdown")
+            await update.message.reply_text(reply_text)
 
         except Exception:
             logger.exception("Errore durante l'elaborazione del messaggio")
@@ -312,6 +322,7 @@ class OrdersBot:
 
         # Crea l'application se non esiste ancora
         if self.application is None:
+            # NESSUN HTTPXRequest qui, lasciamo che PTB usi httpx di default
             self.application = (
                 Application.builder()
                 .token(self.telegram_token)
