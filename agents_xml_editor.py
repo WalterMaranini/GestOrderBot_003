@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 from pathlib import Path
 import xml.etree.ElementTree as ET
+import copy  # per duplicare agent con tutti i tool
 
 XML_FILE = Path("my_agents.xml")
 SERVICES_XML = Path("my_services.xml")
@@ -85,6 +86,10 @@ class AgentsXmlEditor(tk.Tk):
 
         btn_del_agent = ttk.Button(toolbar, text="Elimina Agente", command=self._on_delete_agent)
         btn_del_agent.pack(side=tk.LEFT, padx=3)
+
+        # NUOVO: duplicazione agente
+        btn_dup_agent = ttk.Button(toolbar, text="Duplica Agente", command=self._on_duplicate_agent)
+        btn_dup_agent.pack(side=tk.LEFT, padx=3)
 
         # Corpo: sinistra Treeview, destra dettaglio
         body = ttk.PanedWindow(main_frame, orient=tk.HORIZONTAL)
@@ -597,8 +602,6 @@ class AgentsXmlEditor(tk.Tk):
         self._refresh_tree()
         return True
 
-    # ===================== GENERAZIONE CALLING RULES DA my_services.xml =====================
-
     # ===================== SUPPORTO: DESCRIZIONE RICORSIVA CAMPI =====================
 
     def _describe_field_tree(self, el: ET.Element, prefix: str = "") -> list[str]:
@@ -664,7 +667,6 @@ class AgentsXmlEditor(tk.Tk):
             lines.extend(self._describe_field_tree(child, prefix=path))
 
         return lines
-
 
     # ===================== GENERAZIONE CALLING RULES DA my_services.xml =====================
 
@@ -841,8 +843,6 @@ class AgentsXmlEditor(tk.Tk):
 
         self.dirty = True
 
-
-
     # ===================== COMANDI TOOLBAR =====================
 
     def _on_apply(self):
@@ -916,6 +916,69 @@ class AgentsXmlEditor(tk.Tk):
         self.current_selection_kind = None
         self.dirty = True
         self._refresh_tree()
+
+    def _on_duplicate_agent(self):
+        """
+        Duplica l'agente selezionato (compresi tutti i tool) creando
+        un nuovo agente in coda alla lista.
+        """
+        if self.current_agent_index is None:
+            messagebox.showwarning(
+                "Nessun agente selezionato",
+                "Seleziona prima un agente da duplicare.",
+            )
+            return
+        if not (0 <= self.current_agent_index < len(self.agents)):
+            messagebox.showwarning(
+                "Agente non valido",
+                "L'agente selezionato non è valido.",
+            )
+            return
+
+        original = self.agents[self.current_agent_index]
+
+        # Deep copy per includere tutti i tool e i relativi campi
+        new_agent = copy.deepcopy(original)
+
+        orig_id = (original.get("id") or "").strip()
+        orig_name = (original.get("name") or "").strip()
+
+        # Proposta nuovo id: <id>_copy, garantendo unicità
+        if orig_id:
+            base_id = orig_id + "_copy"
+            new_id = base_id
+            # Se esiste già, aggiungo suffissi numerici
+            counter = 2
+            existing_ids = {a.get("id", "") for a in self.agents}
+            while new_id in existing_ids:
+                new_id = f"{base_id}{counter}"
+                counter += 1
+        else:
+            new_id = ""
+
+        # Proposta nuovo nome: "<name> (copia)"
+        if orig_name:
+            new_name = f"{orig_name} (copia)"
+        else:
+            new_name = ""
+
+        new_agent["id"] = new_id
+        new_agent["name"] = new_name
+
+        # Aggiunge alla lista
+        self.agents.append(new_agent)
+        self.current_agent_index = len(self.agents) - 1
+        self.current_tool_index = None
+        self.current_selection_kind = "agent"
+        self.dirty = True
+
+        self._refresh_tree()
+
+        iid = f"agent_{self.current_agent_index}"
+        self.tree.selection_set(iid)
+        self.tree.focus(iid)
+        self._load_agent_to_form(self.current_agent_index)
+        self.notebook.select(self.agent_frame)
 
     def _on_new_tool(self):
         if self.current_agent_index is None:

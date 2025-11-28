@@ -54,15 +54,12 @@ def _load_agents_from_xml() -> Dict[str, Dict[str, str]]:
 
     for agent_el in root.findall("Agent"):
         agent_id = (agent_el.get("id") or "").strip()
-        name = (agent_el.get("name") or "").strip()
-
         if not agent_id:
             logger.warning("Trovato <Agent> senza attributo 'id': ignorato.")
             continue
 
-        # Descrizione agente
-        desc_el = agent_el.find("Description")
-        description = (desc_el.text or "").strip() if desc_el is not None and desc_el.text else ""
+        name = (agent_el.get("name") or "").strip()
+        description = (agent_el.findtext("Description", default="") or "").strip()
 
         # ----- Instructions strutturate -----
         instr_el = agent_el.find("Instructions")
@@ -75,7 +72,6 @@ def _load_agents_from_xml() -> Dict[str, Dict[str, str]]:
         error_handling = ""
         extra_notes = ""
 
-        # 1) Sottocampi Role / LanguageTone / ToolsUsage / MainFlows / ErrorHandling / ExtraNotes
         if instr_el is not None:
             children = list(instr_el)
             if children:
@@ -141,7 +137,7 @@ def _load_agents_from_xml() -> Dict[str, Dict[str, str]]:
 
                 if calling_txt.strip():
                     tool_lines.append("")
-                    tool_lines.append("Durante la chiamata (Calling):")
+                    tool_lines.append("Durante la chiamata (Calling rules):")
                     tool_lines.append(calling_txt.strip())
 
                 if after_txt.strip():
@@ -149,10 +145,10 @@ def _load_agents_from_xml() -> Dict[str, Dict[str, str]]:
                     tool_lines.append("Dopo la chiamata (After calling):")
                     tool_lines.append(after_txt.strip())
 
-                per_tool_blocks.append("\n".join(tool_lines).strip())
+                per_tool_blocks.append("\n".join(tool_lines))
 
-        # Concatenazione finale della sezione "tools":
-        # - prima eventuale testo da <Instructions><Tools>
+        # Ricomposizione finale del testo "tools":
+        # - prima eventuale sezione "Tools" dentro <Instructions>
         # - poi, a seguire, i blocchi per ogni <Tool> REST
         parts_for_tools: list[str] = []
         if tools_text_from_instructions.strip():
@@ -196,6 +192,37 @@ def _get_agents_by_id() -> Dict[str, Dict[str, str]]:
     return _AGENTS_BY_ID
 
 
+def get_agents_router_metadata() -> Dict[str, Dict[str, str]]:
+    """
+    Restituisce, per ciascun agent definito in my_agents.xml, un dizionario
+    con i metadati utili al router LLM:
+
+        {
+            agent_id: {
+                "name":         ...,
+                "description":  ...,
+                "role":         ...,
+                "tools_usage":  ...,
+                "main_flows":   ...,
+            },
+            ...
+        }
+    """
+    agents_by_id = _get_agents_by_id()
+
+    meta: Dict[str, Dict[str, str]] = {}
+    for agent_id, cfg in agents_by_id.items():
+        meta[agent_id] = {
+            "name":        cfg.get("name") or agent_id,
+            "description": cfg.get("description", ""),
+            "role":        cfg.get("role", ""),
+            "tools_usage": cfg.get("tools_usage", ""),
+            "main_flows":  cfg.get("main_flows", ""),
+        }
+
+    return meta
+
+
 def create_agent_by_id(agent_id: str, mcp_server: MCPServerStdio) -> Agent:
     """
     Crea un oggetto Agent (usato dal bot) a partire dall'id definito in my_agents.xml.
@@ -233,19 +260,14 @@ def get_available_agent_ids() -> list[str]:
 
 def load_bot_agents(mcp_server: MCPServerStdio) -> tuple[Agent, Optional[Agent]]:
     """
-    Funzione helper usata dal bot Telegram:
+    Funzione helper usata eventualmente dal bot Telegram:
     - crea SEMPRE l'agent 'orders' (obbligatorio)
     - crea, se presente, l'agent 'customers' (opzionale)
     """
     agents_by_id = _get_agents_by_id()
-    ids = list(agents_by_id.keys())
-    logger.info("load_bot_agents: agent disponibili: %s", ids)
 
     if "orders" not in agents_by_id:
-        raise AgentsConfigError(
-            "Nessun agent con id='orders' definito in my_agents.xml: "
-            "è obbligatorio per il funzionamento del bot."
-        )
+        raise AgentsConfigError("Agent con id='orders' obbligatorio ma non trovato in my_agents.xml")
 
     orders_agent = create_agent_by_id("orders", mcp_server)
 

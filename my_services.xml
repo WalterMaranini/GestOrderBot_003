@@ -116,4 +116,34 @@
 
 
 
-</RestServices>
+<Service name="crea_rapportino_lavoro" method="POST" path="/api/ES_RDL/App-Sistemi/Crea" baseUrlOverride="http://todevsched0003:9050">
+
+  <Header name="X-BC-Gruppo" value="WM" />
+  <Header name="X-BC-Authorization" env="BC_AUTH_TOKEN" value="h+0VpUzVoAKyBPASvlkKgaRzY9H/cxGy3jWLBkt0v6SKOcsxJCshKYOY6xn/4CSs6F6cTGpbY4He3lOG2R/6nWwnhzTROZHByesbbBabfjWkj6TemEIAnvYsK7nBNKGF7PAKdX5nQF93Ft3pdeYNItrWq/cSLQ1SEfYM+LMKv1TWwzrb3DtDfIOdLianex0r" />
+  <Header name="Content-Type" value="application/json" />
+  <Header name="Accept" value="application/json" />
+
+  <Param name="Parametri" required="true" location="body" type="object">
+
+    <Field name="CodTipoDoc" type="int" required="true" />
+    <Field name="DataRegistrazione" type="string" required="true" />
+    <Field name="CodRisorsaProd" type="string" required="true" />
+    <Field name="Righe" type="array" required="true">
+      <Item type="object">
+        <Field name="TipoOperazione" type="int" required="false" />
+        <Field name="CodCliFor" type="int" required="false" />
+        <Field name="DatiIndCodCommessa" type="string" required="false" />
+        <Field name="DatiIndCodSottocomm" type="string" required="false" />
+        <Field name="IDATTIVITA" type="int" required="false" />
+        <Field name="PercCompletamentoAtt" type="int" required="false" />
+        <Field name="DesEstesa" type="string" required="false" />
+        <Field name="NotaInterna" type="string" required="false" />
+        <Field name="OraInizio" type="int" required="false" />
+        <Field name="OraFine" type="int" required="false" />
+        <Field name="OreTrasferta" type="int" required="false" />
+        <Field name="CausaleAttivita" type="int" required="false" />
+        <Field name="DurataPrestazione" type="int" required="false" />
+      </Item>
+    </Field>
+  </Param>
+</Service></RestServices>
