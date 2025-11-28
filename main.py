@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 
 from agents import Agent
 from agents.mcp import MCPServerStdio
+from dotenv import load_dotenv
 
 from my_agents import get_available_agent_ids, create_agent_by_id
 from telegram_bot import OrdersBot

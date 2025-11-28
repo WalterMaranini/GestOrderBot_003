@@ -20,7 +20,8 @@ import httpx
 import xml.etree.ElementTree as ET
 
 from mcp.server.fastmcp import FastMCP, Context
-
+from dotenv import load_dotenv
+load_dotenv()
 # ===================== LOGGING =====================
 
 logger = logging.getLogger("orders_mcp_server")
@@ -28,7 +29,7 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
 )
-
+logger.info("BC_AUTH_TOKEN visto dal MCP: %r", os.getenv("BC_AUTH_TOKEN"))
 
 # ==================== CONFIG DATA CLASSES =====================
 
