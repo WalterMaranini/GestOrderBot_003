@@ -5,6 +5,12 @@ import logging
 import subprocess
 from typing import Dict
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
+)
+logger = logging.getLogger("main")
+
 from dotenv import load_dotenv
 
 from agents import Agent
@@ -14,13 +20,6 @@ from my_agents import get_available_agent_ids, create_agent_by_id
 from telegram_bot import OrdersBot
 
 # ================== LOGGING ==================
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
-)
-logger = logging.getLogger("main")
-
 
 async def main() -> None:
     """Punto di ingresso principale dell'applicazione.

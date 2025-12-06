@@ -6,7 +6,7 @@ from typing import Dict, List, Optional, Tuple
 from agents import Agent
 from agents.mcp import MCPServerStdio
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("orders.my_agents")
 
 
 class AgentsConfigError(Exception):

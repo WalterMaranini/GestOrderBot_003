@@ -37,12 +37,12 @@ class OrdersBot:
     """
 
     def __init__(self, agents: Dict[str, Agent], default_agent_id: str = "orders") -> None:
-        # Carica variabili da .env (OPENAI_API_KEY, TELEGRAM_BOT_TOKEN, ecc.)
+        # Carica variabili da .env (TELEGRAM_BOT_TOKEN, API key, ecc.)
         load_dotenv()
 
         self.telegram_token = os.getenv("TELEGRAM_BOT_TOKEN")
         if not self.telegram_token:
-            raise RuntimeError("TELEGRAM_BOT_TOKEN non impostato nelle variabili d'ambiente")
+            raise RuntimeError("TELEGRAM_BOT_TOKEN non impostato nelle variabili d'ambiente (.env)")
 
         if not agents:
             raise RuntimeError("Nessun agent passato a OrdersBot.")
@@ -56,9 +56,30 @@ class OrdersBot:
         self.agents: Dict[str, Agent] = agents
         self.default_agent_id: str = default_agent_id
 
-        # Client OpenAI per il routing LLM
-        # Usa OPENAI_API_KEY dalle variabili d'ambiente
-        self.router_client = OpenAI()
+        # ---------- scelta provider per il router LLM ----------
+
+        provider = (os.getenv("LLM_PROVIDER") or "openai").strip().lower()
+        self.llm_provider = provider
+
+        if provider == "openai":
+            logger.info("OrdersBot: uso provider LLM 'openai' per il router")
+            # Usa OPENAI_API_KEY dalle variabili d'ambiente / .env
+            self.router_client = OpenAI()
+        elif provider == "anthropic":
+            logger.info("OrdersBot: uso provider LLM 'anthropic' per il router")
+            try:
+                import anthropic  # import lazy, solo se serve davvero
+            except ImportError as e:
+                raise RuntimeError(
+                    "LLM_PROVIDER=anthropic ma il pacchetto 'anthropic' non è installato. "
+                    "Installa con 'pip install anthropic'."
+                ) from e
+            # Usa ANTHROPIC_API_KEY dal .env
+            self.router_client = anthropic.Anthropic()
+        else:
+            raise RuntimeError(
+                f"Valore LLM_PROVIDER='{provider}' non supportato. Usa 'openai' o 'anthropic'."
+            )
 
         # Sessioni per memorizzare la conversazione (una per chat Telegram)
         self.sessions: Dict[int, SQLiteSession] = {}
@@ -130,17 +151,43 @@ class OrdersBot:
 
         prompt = "\n".join(lines)
 
-        def _call_openai() -> str:
-            response = self.router_client.responses.create(
-                model="gpt-4.1-mini",   # modello leggero per routing
-                input=prompt,
-                max_output_tokens=20,
-            )
-            return (response.output_text or "").strip()
+        def _call_llm() -> str:
+            # Provider: OPENAI
+            if self.llm_provider == "openai":
+                response = self.router_client.responses.create(
+                    model="gpt-4.1-mini",   # modello leggero per routing
+                    input=prompt,
+                    max_output_tokens=20,
+                )
+                return (response.output_text or "").strip()
+
+            # Provider: ANTHROPIC
+            if self.llm_provider == "anthropic":
+                # self.router_client è anthropic.Anthropic()
+                response = self.router_client.messages.create(
+                    model=os.getenv("ANTHROPIC_ROUTER_MODEL", "claude-3-5-haiku-latest"),
+                    max_tokens=20,
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": prompt,
+                        }
+                    ],
+                )
+                # Anthropic SDK: response.content è una lista di content blocks
+                if response.content:
+                    first = response.content[0]
+                    text = getattr(first, "text", None)
+                    if text is not None:
+                        return text
+                return ""
+
+            # Non dovremmo mai arrivare qui perché il costruttore valida già il provider
+            raise RuntimeError(f"Provider LLM sconosciuto: {self.llm_provider}")
 
         try:
-            raw_answer = await asyncio.to_thread(_call_openai)
-            answer = raw_answer.strip().lower()
+            raw_answer = await asyncio.to_thread(_call_llm)
+            answer = (raw_answer or "").strip().lower()
             logger.info("Router LLM - risposta grezza: %r", raw_answer)
         except Exception:
             logger.exception("Errore durante la chiamata al router LLM; uso l'agent di default.")
@@ -172,41 +219,37 @@ class OrdersBot:
         - per brevi risposte di conferma riusa l'agent corrente
         - altrimenti chiede al router LLM quale agent_id usare
         """
-        t = text.lower().strip()
+        normalized = (text or "").strip().lower()
 
-        # Se ho già un agent in corso e il messaggio è brevissimo (es. "sì", "ok"),
-        # mantengo il contesto senza chiamare il router
-        if chat_id in self.current_agent_id and len(t.split()) <= 3:
-            agent_id = self.current_agent_id[chat_id]
-            logger.info(
-                "Router: riuso agent_id='%s' per chat_id=%s (messaggio breve: %r)",
-                agent_id,
-                chat_id,
-                text,
-            )
-            return self.agents[agent_id]
+        # Se ho già un agent corrente per questa chat e il messaggio è molto breve
+        # (es. "ok", "sì", "va bene"), riuso lo stesso agent.
+        if chat_id in self.current_agent_id:
+            current_id = self.current_agent_id[chat_id]
+            # Limite di parole per considerare il messaggio una conferma/risposta breve
+            if len(normalized.split()) <= 3:
+                logger.info(
+                    "Riutilizzo l'agent corrente '%s' per messaggio breve: %r",
+                    current_id,
+                    text,
+                )
+                agent = self.agents[current_id]
+                return agent
 
-        # Usa il router LLM per scegliere l'agent_id
-        agent_id = await self._llm_choose_agent(text)
-
-        if agent_id not in self.agents:
+        # Altrimenti chiedo al router LLM di scegliere un agent_id
+        chosen_id = await self._llm_choose_agent(text)
+        if chosen_id not in self.agents:
             logger.warning(
-                "Router LLM ha scelto un agent_id sconosciuto '%s', uso default_agent_id=%s",
-                agent_id,
+                "Router LLM ha scelto un agent_id sconosciuto (%s), uso default_agent_id=%s",
+                chosen_id,
                 self.default_agent_id,
             )
-            agent_id = self.default_agent_id
+            chosen_id = self.default_agent_id
 
-        self.current_agent_id[chat_id] = agent_id
-        logger.info(
-            "Router: scelto agent_id='%s' per chat_id=%s, messaggio=%r",
-            agent_id,
-            chat_id,
-            text,
-        )
-        return self.agents[agent_id]
+        # Aggiorno l'agent corrente per la chat
+        self.current_agent_id[chat_id] = chosen_id
+        return self.agents[chosen_id]
 
-    # ---------- handlers comandi ----------
+    # ---------- handler comandi Telegram ----------
 
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Gestisce /start"""
@@ -237,40 +280,39 @@ class OrdersBot:
             "Posso aiutarti a:\n"
             "- Inserire nuovi ordini\n"
             "- Consultare lo stato avanzamento ordini\n"
-            "- Recuperare prezzi/listini articoli\n"
-            "- Inserire nuovi clienti in anagrafica\n\n"
-            "Esempi:\n"
-            "- *Vorrei inserire un ordine per il cliente CLI_001 per 10 pezzi di mela.*\n"
-            "- *Registra un nuovo cliente con codice CLI_050: Frutta & Co, via Roma 10 Torino.*\n"
-            "- *Elencami i clienti registrati.*\n"
+            "- Gestire anagrafiche clienti\n"
+            "- Consultare prezzi e listini articoli\n\n"
+            "Scrivi cosa ti serve in linguaggio naturale 😊"
         )
         await update.message.reply_text(text, parse_mode="Markdown")
 
     async def reset_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        """Resetta la memoria della conversazione per quella chat."""
+        """Gestisce /reset: azzera la memoria della conversazione per la chat corrente."""
         if not update.message:
             return
 
         chat_id = update.message.chat_id
 
-        if chat_id in self.sessions:
-            session = self.sessions[chat_id]
-            # pulizia contenuto sessione
+        # Cancella la sessione associata alla chat
+        session = self.sessions.get(chat_id)
+        if session is not None:
             await session.clear_session()
             del self.sessions[chat_id]
 
-        # reset anche dell'agent corrente
+        # Cancella anche l'agent corrente
         if chat_id in self.current_agent_id:
             del self.current_agent_id[chat_id]
 
         await update.message.reply_text(
-            "✅ Ho azzerato la memoria della conversazione per questa chat."
+            "✅ Ho azzerato la memoria della conversazione per questa chat.\n"
+            "Ripartiamo da zero!",
+            parse_mode="Markdown",
         )
 
-    # ---------- handler messaggi normali ----------
+    # ---------- handler messaggi di testo ----------
 
     async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        """Gestisce tutti i messaggi di testo non comandi."""
+        """Gestisce tutti i messaggi di testo non-comando."""
         if not update.message or not update.message.text:
             return
 
@@ -279,16 +321,27 @@ class OrdersBot:
 
         logger.info("Messaggio da %s: %s", chat_id, user_message)
 
-        # Mostra "sta scrivendo..."
+        # Mostra l'azione "sta scrivendo..." mentre elaboriamo
         await update.message.chat.send_action(ChatAction.TYPING)
 
+        # Recupera (o crea) la sessione per questa chat
+        session = self._get_session(chat_id)
+
+        # Scegli l'agent più adatto (router LLM)
         try:
-            session = self._get_session(chat_id)
-
-            # Scegli l'agent in base al testo usando il router LLM
             agent = await self._select_agent(chat_id, user_message)
+            logger.info(
+                "Per la chat %s userò l'agent '%s'",
+                chat_id,
+                next(k for k, v in self.agents.items() if v is agent),
+            )
+        except Exception:
+            logger.exception("Errore durante la scelta dell'agent, uso quello di default.")
+            agent = self.agents[self.default_agent_id]
+            self.current_agent_id[chat_id] = self.default_agent_id
 
-            # Chiama l'Agent (che a sua volta userà MCP quando serve)
+        try:
+            # Esegui l'Agent con la sessione (questo gestisce anche MCP e REST)
             result = await Runner.run(
                 agent,
                 input=user_message,
@@ -304,11 +357,12 @@ class OrdersBot:
                 "❌ Mi spiace, ho avuto un errore interno mentre processavo la tua richiesta."
             )
 
-    # ---------- avvio bot ----------
+    # ---------- avvio del bot ----------
 
     async def run(self) -> None:
-        """Avvia il bot Telegram dentro un event loop già esistente (niente run_polling)."""
-        logger.info("Inizializzo OrdersBot...")
+        """Avvia il bot Telegram in modalità polling asincrona."""
+        if not self.telegram_token:
+            raise RuntimeError("TELEGRAM_BOT_TOKEN non configurato.")
 
         # Crea l'application se non esiste ancora
         if self.application is None:
@@ -323,7 +377,7 @@ class OrdersBot:
             self.application.add_handler(CommandHandler("help", self.help_command))
             self.application.add_handler(CommandHandler("reset", self.reset_command))
 
-            # Handler messaggi di testo
+            # Handler per tutti i messaggi di testo non-comando
             self.application.add_handler(
                 MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_message)
             )
