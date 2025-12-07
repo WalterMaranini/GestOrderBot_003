@@ -45,6 +45,7 @@ app = FastAPI(
     version="1.0.0",
 )
 
+
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     """
@@ -94,12 +95,10 @@ async def log_requests(request: Request, call_next):
 
     # --- Body della risposta ---
     try:
-        # Recupera il body originario
         resp_body_bytes = b""
         async for chunk in response.body_iterator:
             resp_body_bytes += chunk
 
-        # Ricreiamo la Response perché abbiamo consumato body_iterator
         new_response = Response(
             content=resp_body_bytes,
             status_code=response.status_code,
@@ -144,7 +143,6 @@ async def log_requests(request: Request, call_next):
             response.status_code,
         )
         return response
-
 
 
 @app.on_event("startup")
@@ -286,8 +284,26 @@ def create_customer(payload: CustomerIn, db: Session = Depends(get_db)):
 
 
 @app.get("/customers", response_model=List[CustomerOut])
-def list_customers(db: Session = Depends(get_db)):
-    rows = db.query(Customer).order_by(Customer.code).all()
+def list_customers(
+    code: Optional[str] = Query(None, description="Filtra per codice (LIKE)"),
+    name: Optional[str] = Query(None, description="Filtra per nome (LIKE)"),
+    db: Session = Depends(get_db),
+):
+    """
+    Lista / ricerca clienti.
+
+    - senza parametri -> tutti i clienti
+    - code -> filtro su codice (LIKE)
+    - name -> filtro su nome (LIKE)
+    """
+    q = db.query(Customer)
+
+    if code:
+        q = q.filter(Customer.code.ilike(f"%{code}%"))
+    if name:
+        q = q.filter(Customer.name.ilike(f"%{name}%"))
+
+    rows = q.order_by(Customer.code).all()
     return [
         CustomerOut(
             id=r.id,
@@ -300,6 +316,47 @@ def list_customers(db: Session = Depends(get_db)):
         )
         for r in rows
     ]
+
+
+@app.get("/customers/{code}", response_model=CustomerOut)
+def get_customer(code: str, db: Session = Depends(get_db)):
+    """
+    Dettaglio cliente per codice.
+    """
+    cust = db.query(Customer).filter(Customer.code == code).first()
+    if not cust:
+        raise HTTPException(status_code=404, detail="Cliente non trovato")
+
+    return CustomerOut(
+        id=cust.id,
+        code=cust.code,
+        name=cust.name,
+        address=cust.address,
+        city=cust.city,
+        province=cust.province,
+        country=cust.country,
+    )
+
+
+@app.delete("/customers/{code}", status_code=204)
+def delete_customer(code: str, db: Session = Depends(get_db)):
+    """
+    Cancellazione cliente per codice.
+    Impedita se esistono ordini collegati.
+    """
+    cust = db.query(Customer).filter(Customer.code == code).first()
+    if not cust:
+        raise HTTPException(status_code=404, detail="Cliente non trovato")
+
+    if cust.orders and len(cust.orders) > 0:
+        raise HTTPException(
+            status_code=409,
+            detail="Impossibile cancellare: esistono ordini collegati al cliente",
+        )
+
+    db.delete(cust)
+    db.commit()
+    return Response(status_code=204)
 
 
 # ===================== ENDPOINT ARTICOLI =====================
@@ -328,8 +385,26 @@ def create_article(payload: ArticleIn, db: Session = Depends(get_db)):
 
 
 @app.get("/articles", response_model=List[ArticleOut])
-def list_articles(db: Session = Depends(get_db)):
-    rows = db.query(Article).order_by(Article.code).all()
+def list_articles(
+    code: Optional[str] = Query(None, description="Filtra per codice (LIKE)"),
+    description: Optional[str] = Query(None, description="Filtra per descrizione (LIKE)"),
+    db: Session = Depends(get_db),
+):
+    """
+    Lista / ricerca articoli.
+
+    - senza parametri -> tutti gli articoli
+    - code -> filtro su codice (LIKE)
+    - description -> filtro su descrizione (LIKE)
+    """
+    q = db.query(Article)
+
+    if code:
+        q = q.filter(Article.code.ilike(f"%{code}%"))
+    if description:
+        q = q.filter(Article.description.ilike(f"%{description}%"))
+
+    rows = q.order_by(Article.code).all()
     return [
         ArticleOut(
             id=r.id,
@@ -339,6 +414,47 @@ def list_articles(db: Session = Depends(get_db)):
         )
         for r in rows
     ]
+
+
+@app.get("/articles/{code}", response_model=ArticleOut)
+def get_article(code: str, db: Session = Depends(get_db)):
+    """
+    Dettaglio articolo per codice.
+    """
+    art = db.query(Article).filter(Article.code == code).first()
+    if not art:
+        raise HTTPException(status_code=404, detail="Articolo non trovato")
+
+    return ArticleOut(
+        id=art.id,
+        code=art.code,
+        description=art.description,
+        unit=art.unit,
+    )
+
+
+@app.delete("/articles/{code}", status_code=204)
+def delete_article(code: str, db: Session = Depends(get_db)):
+    """
+    Cancellazione articolo per codice.
+    Impedita se esistono:
+    - righe ordine
+    - prezzi
+    - giacenze
+    """
+    art = db.query(Article).filter(Article.code == code).first()
+    if not art:
+        raise HTTPException(status_code=404, detail="Articolo non trovato")
+
+    if art.order_lines or art.prices or art.stock_levels:
+        raise HTTPException(
+            status_code=409,
+            detail="Impossibile cancellare: esistono dati collegati (ordini, prezzi o giacenze)",
+        )
+
+    db.delete(art)
+    db.commit()
+    return Response(status_code=204)
 
 
 # ===================== ENDPOINT PREZZI =====================
@@ -552,6 +668,48 @@ def get_price_list(
     ]
 
 
+@app.delete("/prices", status_code=204)
+def delete_price(
+    article_code: str = Query(..., description="Codice articolo"),
+    customer_code: Optional[str] = Query(
+        None, description="Codice cliente (se omesso cancella il prezzo generico)"
+    ),
+    db: Session = Depends(get_db),
+):
+    """
+    Cancellazione prezzo:
+
+    - se customer_code è valorizzato -> cancella prezzo cliente+articolo
+    - altrimenti -> cancella prezzo generico per articolo
+    """
+    art = db.query(Article).filter(Article.code == article_code).first()
+    if not art:
+        raise HTTPException(status_code=404, detail="Articolo non trovato")
+
+    if customer_code:
+        cust = db.query(Customer).filter(Customer.code == customer_code).first()
+        if not cust:
+            raise HTTPException(status_code=404, detail="Cliente non trovato")
+        price = (
+            db.query(Price)
+            .filter(Price.customer_id == cust.id, Price.article_id == art.id)
+            .first()
+        )
+    else:
+        price = (
+            db.query(Price)
+            .filter(Price.customer_id.is_(None), Price.article_id == art.id)
+            .first()
+        )
+
+    if not price:
+        raise HTTPException(status_code=404, detail="Prezzo non trovato")
+
+    db.delete(price)
+    db.commit()
+    return Response(status_code=204)
+
+
 # ===================== ENDPOINT GIACENZE =====================
 
 @app.post("/stock", response_model=StockItem)
@@ -596,6 +754,9 @@ def get_stock(
     warehouse_code: Optional[str] = Query(None),
     db: Session = Depends(get_db),
 ):
+    """
+    Lista / ricerca giacenze con filtri per articolo e magazzino.
+    """
     q = db.query(StockLevel).join(Article)
 
     if article_code:
@@ -614,6 +775,35 @@ def get_stock(
             )
         )
     return out
+
+
+@app.delete("/stock", status_code=204)
+def delete_stock(
+    article_code: str = Query(..., description="Codice articolo"),
+    warehouse_code: str = Query(..., description="Codice magazzino"),
+    db: Session = Depends(get_db),
+):
+    """
+    Cancellazione riga giacenza per articolo+magazzino.
+    """
+    art = db.query(Article).filter(Article.code == article_code).first()
+    if not art:
+        raise HTTPException(status_code=404, detail="Articolo non trovato")
+
+    stock = (
+        db.query(StockLevel)
+        .filter(
+            StockLevel.article_id == art.id,
+            StockLevel.warehouse_code == warehouse_code,
+        )
+        .first()
+    )
+    if not stock:
+        raise HTTPException(status_code=404, detail="Giacenza non trovata")
+
+    db.delete(stock)
+    db.commit()
+    return Response(status_code=204)
 
 
 # ===================== ENDPOINT ORDINI =====================
@@ -744,14 +934,19 @@ def get_order(order_id: int, db: Session = Depends(get_db)):
 @app.get("/orders", response_model=List[OrderOut])
 def get_orders(
     customer_code: Optional[str] = Query(None),
+    status: Optional[str] = Query(None, description="Filtra per stato ordine"),
+    from_date: Optional[str] = Query(None, description="Data ordine minima (YYYY-MM-DD)"),
+    to_date: Optional[str] = Query(None, description="Data ordine massima (YYYY-MM-DD)"),
     limit: Optional[int] = Query(10),
     db: Session = Depends(get_db),
 ):
     """
-    Lista ordini, opzionalmente filtrata per cliente.
+    Lista ordini, con filtri opzionali:
 
-    Mappato da:
-      Service name="get_orders" method="GET" path="/orders"
+    - customer_code: per cliente
+    - status: stato ordine
+    - from_date / to_date: intervallo sulla data ordine
+    - limit: max ordini restituiti (default 10)
     """
     q = db.query(OrderHeader)
 
@@ -760,6 +955,23 @@ def get_orders(
         if not cust:
             raise HTTPException(status_code=400, detail=f"Cliente {customer_code} non trovato")
         q = q.filter(OrderHeader.customer_id == cust.id)
+
+    if status:
+        q = q.filter(OrderHeader.status == status)
+
+    if from_date:
+        try:
+            d_from = date.fromisoformat(from_date)
+            q = q.filter(OrderHeader.order_date >= d_from)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Formato from_date non valido, usare YYYY-MM-DD")
+
+    if to_date:
+        try:
+            d_to = date.fromisoformat(to_date)
+            q = q.filter(OrderHeader.order_date <= d_to)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Formato to_date non valido, usare YYYY-MM-DD")
 
     q = q.order_by(OrderHeader.id.desc())
     if limit:
@@ -799,3 +1011,17 @@ def get_orders(
         )
 
     return out_list
+
+
+@app.delete("/orders/{order_id}", status_code=204)
+def delete_order(order_id: int, db: Session = Depends(get_db)):
+    """
+    Cancellazione ordine (testata + righe, grazie al cascade ORM).
+    """
+    order = db.query(OrderHeader).filter(OrderHeader.id == order_id).first()
+    if not order:
+        raise HTTPException(status_code=404, detail="Ordine non trovato")
+
+    db.delete(order)
+    db.commit()
+    return Response(status_code=204)

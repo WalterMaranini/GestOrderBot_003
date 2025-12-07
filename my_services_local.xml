@@ -1,0 +1,111 @@
+<?xml version='1.0' encoding='utf-8'?>
+<RestServices baseUrl="http://127.0.0.1:8001">
+
+  <!-- ===================== ORDERS ===================== -->
+
+  <Service name="create_order" method="POST" path="/orders">
+    <Param name="customer_code" required="true" location="body" type="string" />
+    <Param name="delivery_date" required="true" location="body" type="string" />
+    <!-- lines è una lista di {article_code, quantity} -->
+    <Param name="lines" required="true" location="body" type="json" />
+  </Service>
+
+  <Service name="get_order" method="GET" path="/orders/{order_id}">
+    <Param name="order_id" required="true" location="path" type="int" />
+  </Service>
+
+  <Service name="get_orders" method="GET" path="/orders">
+    <Param name="customer_code" required="false" location="query" type="string" />
+    <Param name="status" required="false" location="query" type="string" />
+    <Param name="from_date" required="false" location="query" type="string" />
+    <Param name="to_date" required="false" location="query" type="string" />
+    <Param name="limit" required="false" location="query" type="int" />
+  </Service>
+
+  <Service name="delete_order" method="DELETE" path="/orders/{order_id}">
+    <Param name="order_id" required="true" location="path" type="int" />
+  </Service>
+
+  <!-- ===================== CUSTOMERS ===================== -->
+
+  <Service name="create_customer" method="POST" path="/customers">
+    <Param name="code" required="true" location="body" type="string" />
+    <Param name="name" required="true" location="body" type="string" />
+    <Param name="address" required="false" location="body" type="string" />
+    <Param name="city" required="false" location="body" type="string" />
+    <Param name="province" required="false" location="body" type="string" />
+    <Param name="country" required="false" location="body" type="string" />
+  </Service>
+
+  <Service name="list_customers" method="GET" path="/customers">
+    <Param name="code" required="false" location="query" type="string" />
+    <Param name="name" required="false" location="query" type="string" />
+  </Service>
+
+  <Service name="get_customer" method="GET" path="/customers/{code}">
+    <Param name="code" required="true" location="path" type="string" />
+  </Service>
+
+  <Service name="delete_customer" method="DELETE" path="/customers/{code}">
+    <Param name="code" required="true" location="path" type="string" />
+  </Service>
+
+  <!-- ===================== ARTICLES ===================== -->
+
+  <Service name="create_article" method="POST" path="/articles">
+    <Param name="code" required="true" location="body" type="string" />
+    <Param name="description" required="true" location="body" type="string" />
+    <Param name="unit" required="true" location="body" type="string" />
+  </Service>
+
+  <Service name="list_articles" method="GET" path="/articles">
+    <Param name="code" required="false" location="query" type="string" />
+    <Param name="description" required="false" location="query" type="string" />
+  </Service>
+
+  <Service name="get_article" method="GET" path="/articles/{code}">
+    <Param name="code" required="true" location="path" type="string" />
+  </Service>
+
+  <Service name="delete_article" method="DELETE" path="/articles/{code}">
+    <Param name="code" required="true" location="path" type="string" />
+  </Service>
+
+  <!-- ===================== PRICES ===================== -->
+
+  <Service name="create_price" method="POST" path="/prices">
+    <Param name="customer_code" required="false" location="body" type="string" />
+    <Param name="article_code" required="true" location="body" type="string" />
+    <Param name="price" required="true" location="body" type="float" />
+    <Param name="currency" required="false" location="body" type="string" />
+  </Service>
+
+  <Service name="get_price_list" method="GET" path="/prices">
+    <Param name="customer_code" required="false" location="query" type="string" />
+    <Param name="article_code" required="false" location="query" type="string" />
+  </Service>
+
+  <Service name="delete_price" method="DELETE" path="/prices">
+    <Param name="article_code" required="true" location="query" type="string" />
+    <Param name="customer_code" required="false" location="query" type="string" />
+  </Service>
+
+  <!-- ===================== STOCK LEVELS ===================== -->
+
+  <Service name="create_or_update_stock" method="POST" path="/stock">
+    <Param name="article_code" required="true" location="body" type="string" />
+    <Param name="warehouse_code" required="false" location="body" type="string" />
+    <Param name="quantity" required="true" location="body" type="float" />
+  </Service>
+
+  <Service name="get_stock" method="GET" path="/stock">
+    <Param name="article_code" required="false" location="query" type="string" />
+    <Param name="warehouse_code" required="false" location="query" type="string" />
+  </Service>
+
+  <Service name="delete_stock" method="DELETE" path="/stock">
+    <Param name="article_code" required="true" location="query" type="string" />
+    <Param name="warehouse_code" required="true" location="query" type="string" />
+  </Service>
+
+</RestServices>

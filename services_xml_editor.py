@@ -8,13 +8,32 @@ import json
 import re
 from urllib.parse import urlparse
 
-XML_FILE = Path("my_services.xml")
+import os
+from dotenv import load_dotenv
+
+# Carica eventuale .env (non dà errore se manca)
+load_dotenv()
+
+# Scelta dinamica del file servizi XML in base alla modalità ERP,
+# coerente con mcp_server.py
+_erp_mode = os.getenv("ORDERS_ERP_MODE", "LOCAL").upper()
+
+# Default in base al mode:
+# - LOCAL -> my_services_local.xml (mini-ERP locale)
+# - ERP   -> my_services_erp.xml  (ERP reale)
+_default_rest_file = "my_services_local.xml" if _erp_mode == "LOCAL" else "my_services_erp.xml"
+
+# Possibilità di override esplicito via env
+_rest_xml_path = os.getenv("ORDERS_REST_XML_PATH", _default_rest_file)
+
+XML_FILE = Path(_rest_xml_path)
+
 
 
 class MyServicesEditor(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("Editor my_services.xml")
+        self.title(f"Editor servizi - {XML_FILE.name}")
         self.geometry("1100x650")
 
         self.xml_tree = None  # ET.ElementTree

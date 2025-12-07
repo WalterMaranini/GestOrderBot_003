@@ -144,6 +144,13 @@ class OrdersBot:
 
             desc_text = " ".join(desc_parts).strip()
 
+            # LOG: stima caratteri per la definizione "meta" dell'agent nel router
+            logger.info(
+                "Router LLM - definizione meta Agent '%s' = %d caratteri.",
+                agent_id,
+                len(desc_text),
+            )
+
             # Per sicurezza non facciamo diventare il prompt infinito
             if len(desc_text) > 600:
                 desc_text = desc_text[:600] + "..."
@@ -160,6 +167,12 @@ class OrdersBot:
         lines.append(user_text)
 
         prompt = "\n".join(lines)
+
+        # LOG: lunghezza totale del prompt passato al router LLM
+        logger.info(
+            "Router LLM - prompt totale per scelta agent = %d caratteri.",
+            len(prompt),
+        )
 
         def _call_openai() -> str:
             response = self.router_client.responses.create(
@@ -336,6 +349,16 @@ class OrdersBot:
 
             # Scegli l'agent in base al testo usando il router LLM
             agent = await self._select_agent(chat_id, user_message)
+
+            # --- LOG: stima caratteri per la definizione dell'agente (instructions) ---
+            agent_instructions = getattr(agent, "instructions", "") or ""
+            instr_len = len(agent_instructions)
+            logger.info(
+                "LLM - definizione Agent '%s' (%s) = %d caratteri (instructions).",
+                getattr(agent, "name", "N/A"),
+                type(agent).__name__,
+                instr_len,
+            )
 
             # Chiama l'Agent (che a sua volta userà MCP quando serve)
             result = await Runner.run(

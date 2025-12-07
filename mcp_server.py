@@ -295,7 +295,22 @@ def load_rest_config_from_xml(path: str) -> RestConfig:
 
 # ===================== MCP SERVER (FastMCP) =====================
 
-REST_XML_PATH = os.getenv("ORDERS_REST_XML_PATH", "my_services.xml")
+# Scelta dinamica del file servizi XML in base alla modalità ERP
+_erp_mode = os.getenv("ORDERS_ERP_MODE", "LOCAL").upper()
+
+# Default in base al mode:
+# - LOCAL -> my_services_local.xml (mini-ERP locale)
+# - ERP   -> my_services_erp.xml  (ERP reale)
+_default_rest_file = "my_services_local.xml" if _erp_mode == "LOCAL" else "my_services_erp.xml"
+
+# Possibilità di override esplicito via env
+REST_XML_PATH = os.getenv("ORDERS_REST_XML_PATH", _default_rest_file)
+
+logger.info(
+    "mcp_server.py - uso file servizi XML: %s (ORDERS_ERP_MODE=%s)",
+    REST_XML_PATH,
+    _erp_mode,
+)
 
 try:
     REST_CONFIG = load_rest_config_from_xml(REST_XML_PATH)
@@ -303,6 +318,7 @@ try:
 except Exception as exc:
     logger.exception("Impossibile caricare la configurazione REST: %s", exc)
     raise
+
 
 mcp = FastMCP("OrdersMCPServer")
 

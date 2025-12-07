@@ -1,0 +1,136 @@
+<?xml version='1.0' encoding='utf-8'?>
+<RestServices baseUrl="http://todevsched0003:9050">
+
+  <Service name="crea_cliente_esolver" method="POST" path="/api/.../App-Sistemi/Crea" baseUrlOverride="http://todevsched0003:9050">
+    <Header name="X-BC-Gruppo" value="WM" />
+    <Header name="X-BC-Authorization" env="BC_AUTH_TOKEN" />
+    <Header name="Content-Type" value="application/json" />
+    <Header name="Accept" value="application/json" />
+
+    <Param name="Parametri" required="true" location="body" type="object">
+      <Field name="TipoAnagrafica" type="int" required="true" />
+      <Field name="TipoSoggetto" type="int" required="true" />
+      <Field name="TipoSoggettoFTE" type="int" required="false" />
+      <Field name="CodClasseContabile" type="string" required="true" />
+
+      <Field name="Indirizzi" type="array" required="true">
+        <Item type="object">
+          <Field name="NumProgr" type="int" required="true" />
+          <Field name="CodAlternativo" type="string" required="false" />
+          <Field name="Indirizzo" type="string" required="true" />
+          <Field name="Localita" type="string" required="false" />
+          <Field name="CAP" type="string" required="false" />
+          <Field name="Comune" type="string" required="false" />
+          <Field name="Provincia" type="string" required="false" />
+          <Field name="NazioneISO" type="string" required="false" />
+        </Item>
+      </Field>
+
+      <Field name="Riferimenti" type="array" required="false">
+        <Item type="object">
+          <Field name="TipoRiferimento" type="string" required="true" />
+          <Field name="Valore" type="string" required="true" />
+        </Item>
+      </Field>
+    </Param>
+  </Service>
+
+  <Service name="lista_clienti_esolver" method="POST" path="/api/.../App-Sistemi/Leggi" baseUrlOverride="http://todevsched0003:9050">
+    <Header name="X-BC-Gruppo" value="WM" />
+    <Header name="X-BC-Authorization" env="BC_AUTH_TOKEN" />
+    <Header name="Content-Type" value="application/json" />
+    <Header name="Accept" value="application/json" />
+
+    <Param name="Parametri" required="true" location="body" type="object">
+      <Field name="TipoAnagrafica" type="int" required="true" />
+      <Field name="CodClasseContabile" type="string" required="false" />
+      <Field name="FiltroCodice" type="string" required="false" />
+      <Field name="FiltroDescrizione" type="string" required="false" />
+      <Field name="NumMax" type="int" required="false" />
+    </Param>
+  </Service>
+
+  <Service name="leggi_cliente" method="POST" path="/api/.../App-Sistemi/Leggi" baseUrlOverride="http://todevsched0003:9050">
+    <Header name="X-BC-Gruppo" value="WM" />
+    <Header name="X-BC-Authorization" env="BC_AUTH_TOKEN" />
+    <Header name="Content-Type" value="application/json" />
+    <Header name="Accept" value="application/json" />
+
+    <Param name="Parametri" required="true" location="body" type="object">
+      <Field name="TipoAnagrafica" type="int" required="true" />
+      <Field name="CodClasseContabile" type="string" required="false" />
+      <Field name="CodAnagrafico" type="string" required="false" />
+      <Field name="CodAlternativo" type="string" required="false" />
+      <Field name="PIVA_CFisc" type="string" required="false" />
+      <Field name="NumProgrIndirizzo" type="int" required="false" />
+    </Param>
+  </Service>
+
+  <Service name="crea_ordine" method="POST" path="/api/.../ORDV/App-Sistemi/Crea" baseUrlOverride="http://todevsched0003:9050">
+    <Header name="X-BC-Gruppo" value="WM" />
+    <Header name="X-BC-Authorization" env="BC_AUTH_TOKEN" />
+    <Header name="Content-Type" value="application/json" />
+    <Header name="Accept" value="application/json" />
+
+    <Param name="Parametri" required="true" location="body" type="object">
+      <Field name="CodTipoDoc" type="int" required="true" />
+      <Field name="CodCliFor" type="int" required="true" />
+      <Field name="DataDoc" type="string" required="true" />
+      <Field name="DataConsegna" type="string" required="false" />
+      <Field name="NoteIntestazione" type="string" required="false" />
+
+      <Field name="Righe" type="array" required="true">
+        <Item type="object">
+          <Field name="TipoRiga" type="int" required="true" />
+          <Field name="CodArt" type="string" required="true" />
+          <Field name="Descrizione" type="string" required="false" />
+          <Field name="Qta" type="decimal" required="true" />
+          <Field name="PrezzoUnitario" type="decimal" required="false" />
+          <Field name="CodListino" type="string" required="false" />
+          <Field name="ScontoPercentuale" type="decimal" required="false" />
+          <Field name="NoteRiga" type="string" required="false" />
+        </Item>
+      </Field>
+
+      <Field name="AllegatiAnnotazioni" type="array" required="false">
+        <Item type="object">
+          <Field name="Testo" type="string" required="true" />
+          <Field name="Tipo" type="string" required="false" />
+        </Item>
+      </Field>
+    </Param>
+  </Service>
+
+  <Service name="crea_rapportino_lavoro" method="POST" path="/api/.../RDL/App-Sistemi/Crea" baseUrlOverride="http://todevsched0003:9050">
+    <Header name="X-BC-Gruppo" value="WM" />
+    <Header name="X-BC-Authorization" env="BC_AUTH_TOKEN" />
+    <Header name="Content-Type" value="application/json" />
+    <Header name="Accept" value="application/json" />
+
+    <Param name="Parametri" required="true" location="body" type="object">
+      <Field name="CodCliFor" type="int" required="true" />
+      <Field name="DataDoc" type="string" required="true" />
+      <Field name="NoteIntestazione" type="string" required="false" />
+
+      <Field name="Righe" type="array" required="true">
+        <Item type="object">
+          <Field name="CodArt" type="string" required="true" />
+          <Field name="Descrizione" type="string" required="false" />
+          <Field name="Qta" type="decimal" required="true" />
+          <Field name="PrezzoUnitario" type="decimal" required="false" />
+          <Field name="CodCentroCosto" type="string" required="false" />
+          <Field name="CodCommessa" type="string" required="false" />
+          <Field name="NoteRiga" type="string" required="false" />
+        </Item>
+      </Field>
+
+      <Field name="AllegatiAnnotazioni" type="array" required="false">
+        <Item type="object">
+          <Field name="Testo" type="string" required="true" />
+          <Field name="Tipo" type="string" required="false" />
+        </Item>
+      </Field>
+    </Param>
+  </Service>
+
+</RestServices>

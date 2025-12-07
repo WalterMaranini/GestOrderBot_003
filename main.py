@@ -89,7 +89,7 @@ async def main() -> None:
             # ================== CREAZIONE AGENT DAL FILE XML ==================
             agent_ids = get_available_agent_ids()
             if not agent_ids:
-                raise RuntimeError("Nessun <Agent> definito nel file my_agents.xlm/xml.")
+                raise RuntimeError("Nessun <Agent> definito nel file my_agents.xml.")
 
             logger.info("ID agent disponibili: %s", agent_ids)
 
@@ -98,13 +98,20 @@ async def main() -> None:
                 agents[agent_id] = create_agent_by_id(agent_id, orders_mcp_server)
                 logger.info("Creato agent id='%s' dal file XML.", agent_id)
 
-            # Decidi quale agent usare come default per le chat Telegram
-            default_agent_id = "orders" if "orders" in agents else agent_ids[0]
-            if default_agent_id != "orders":
-                logger.warning(
-                    "Nessun agent con id='orders' trovato, uso '%s' come default.",
-                    default_agent_id,
-                )
+            # --- Scelta dinamica dell'agent di default ---
+            # 1) Provo a leggerlo da variabile d'ambiente (facoltativa)
+            default_agent_id = os.getenv("ORDERS_DEFAULT_AGENT_ID")
+
+            # 2) Se non impostata o non valida, uso il primo definito nel file XML
+            if not default_agent_id or default_agent_id not in agents:
+                if default_agent_id and default_agent_id not in agents:
+                    logger.warning(
+                        "ORDERS_DEFAULT_AGENT_ID='%s' non è presente tra gli agent (%s). "
+                        "Uso il primo definito nel file XML.",
+                        default_agent_id,
+                        list(agents.keys()),
+                    )
+                default_agent_id = agent_ids[0]
 
             logger.info(
                 "Creo il bot OrdersBot con gli agent: %s (default='%s')",
@@ -113,6 +120,7 @@ async def main() -> None:
             )
 
             bot = OrdersBot(agents=agents, default_agent_id=default_agent_id)
+
             try:
                 await bot.run()
             except Exception:

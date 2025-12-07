@@ -3,16 +3,39 @@ from tkinter import ttk, messagebox
 from pathlib import Path
 import xml.etree.ElementTree as ET
 import copy  # per duplicare agent con tutti i tool
+import os
+from dotenv import load_dotenv
 
-XML_FILE = Path("my_agents.xml")
-SERVICES_XML = Path("my_services.xml")
+# Carica eventuale .env (facoltativo)
+load_dotenv()
+
+# Scelta dinamica del file agent XML in base alla modalità ERP,
+# coerente con my_agents.py
+_erp_mode = os.getenv("ORDERS_ERP_MODE", "LOCAL").upper()
+
+# Default in base al mode:
+# - LOCAL -> my_agents_local.xml
+# - ERP   -> my_agents_erp.xml
+_default_agents_file = "my_agents_local.xml" if _erp_mode == "LOCAL" else "my_agents_erp.xml"
+
+# Possibilità di override esplicito via env
+_agents_xml_path = os.getenv("ORDERS_AGENTS_XML_PATH", _default_agents_file)
+XML_FILE = Path(_agents_xml_path)
+
+# Scelta dinamica del file servizi XML per la generazione delle calling rules,
+# coerente con mcp_server.py
+_default_rest_file = "my_services_local.xml" if _erp_mode == "LOCAL" else "my_services_erp.xml"
+_rest_xml_path = os.getenv("ORDERS_REST_XML_PATH", _default_rest_file)
+SERVICES_XML = Path(_rest_xml_path)
+
 
 
 class AgentsXmlEditor(tk.Tk):
     def __init__(self):
         super().__init__()
 
-        self.title("Editor my_agents.xml")
+        self.title(f"Editor {XML_FILE.name}")
+
         self.geometry("1100x650")
 
         # Dati in memoria:
@@ -228,7 +251,7 @@ class AgentsXmlEditor(tk.Tk):
 
         btn_gen_rules = ttk.Button(
             tool_btn_frame,
-            text="Deriva Calling rules da my_services.xml",
+            text=f"Deriva Calling rules da {SERVICES_XML.name}",
             command=self._on_generate_tool_rules_from_services,
         )
         btn_gen_rules.pack(side=tk.LEFT, padx=8)

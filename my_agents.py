@@ -1,3 +1,5 @@
+import os
+from dotenv import load_dotenv
 import logging
 from pathlib import Path
 import xml.etree.ElementTree as ET
@@ -17,8 +19,24 @@ class AgentsConfigError(Exception):
 # Cache in memoria degli agent caricati da XML
 _AGENTS_BY_ID: Optional[Dict[str, Dict[str, str]]] = None
 
-# Percorso del file XML (stessa cartella di esecuzione)
-XML_FILE = Path("my_agents.xml")
+# Scelta dinamica del file XML in base alla modalità ERP
+_erp_mode = os.getenv("ORDERS_ERP_MODE", "LOCAL").upper()
+
+# Default in base al mode:
+# - LOCAL -> my_agents_local.xml
+# - ERP   -> my_agents_erp.xml
+_default_agents_file = "my_agents_local.xml" if _erp_mode == "LOCAL" else "my_agents_erp.xml"
+
+# Possibilità di override esplicito via env
+_agents_xml_path = os.getenv("ORDERS_AGENTS_XML_PATH", _default_agents_file)
+
+XML_FILE = Path(_agents_xml_path)
+
+logger.info(
+    "my_agents.py - uso file agent XML: %s (ORDERS_ERP_MODE=%s)",
+    XML_FILE,
+    _erp_mode,
+)
 
 
 def _load_agents_from_xml() -> Dict[str, Dict[str, str]]:
