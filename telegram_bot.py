@@ -348,24 +348,26 @@ class OrdersBot:
 
         chat_id = update.message.chat_id
 
-        # 1) Se la sessione esiste in memoria, puliscila dal DB
+        # 1) Se la sessione esiste in memoria, svuota la cronologia dal DB
         if chat_id in self.sessions:
             session = self.sessions[chat_id]
             try:
-                # Chiama il metodo clear() della sessione per svuotare il DB
-                session.clear()
-                logger.info("Sessione DB pulita per chat_id=%s", chat_id)
+                # Metodo corretto e asincrono della SQLiteSession
+                await session.clear_session()
+                logger.info("Sessione DB (SQLiteSession) pulita per chat_id=%s", chat_id)
             except Exception as e:
-                logger.warning("Errore durante la pulizia della sessione DB: %s", e)
+                logger.exception("Errore durante la pulizia della sessione DB per chat_id=%s: %s", chat_id, e)
 
-            # Poi rimuovi dalla memoria
+            # opzionale: tieni o elimina l'oggetto in memoria
             del self.sessions[chat_id]
 
         # 2) Resetta l'agent corrente
         if chat_id in self.current_agent_id:
             del self.current_agent_id[chat_id]
 
-        await update.message.reply_text("🔄 Ho azzerato la memoria della chat (contesto e sessione DB).")
+        await update.message.reply_text(
+            "🔄 Ho azzerato la memoria della chat (contesto e sessione DB)."
+        )
 
     async def agent_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Permette di selezionare manualmente l'agent: /agent orders, /agent customers, ecc."""
@@ -462,13 +464,14 @@ class OrdersBot:
 
     # ---------- avvio bot ----------
 
+    from telegram.error import NetworkError
+    import asyncio
+
     async def run(self) -> None:
         """Avvia il bot Telegram dentro un event loop già esistente (niente run_polling)."""
         logger.info("Inizializzo OrdersBot...")
 
-        # Crea l'application se non esiste ancora
         if self.application is None:
-            # NESSUN HTTPXRequest qui, lasciamo che PTB usi httpx di default
             self.application = (
                 Application.builder()
                 .token(self.telegram_token)
@@ -481,19 +484,28 @@ class OrdersBot:
             self.application.add_handler(CommandHandler("reset", self.reset_command))
             self.application.add_handler(CommandHandler("agent", self.agent_command))
 
-            # Handler messaggi di testo
+            # Handler messaggi
             self.application.add_handler(
                 MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_message)
             )
 
         app = self.application
 
-        # Sequenza consigliata quando NON si usa run_polling
         await app.initialize()
         await app.start()
-        await app.updater.start_polling(allowed_updates=Update.ALL_TYPES)
 
-        logger.info("Bot in esecuzione (polling)…")
+        # Loop di retry per il polling
+        while True:
+            try:
+                logger.info("Avvio polling Telegram...")
+                await app.updater.start_polling(allowed_updates=Update.ALL_TYPES)
+                logger.info("Polling terminato senza errori, esco dal loop.")
+                break  # se mai dovesse uscire normalmente
+            except NetworkError as e:
+                logger.error("Errore di rete durante il polling Telegram: %s", e)
+                logger.info("Riprovo tra 10 secondi...")
+                await asyncio.sleep(10)
 
-        # Tieni vivo il processo finché non viene terminato
+        # mantiene il processo vivo
         await asyncio.Event().wait()
+

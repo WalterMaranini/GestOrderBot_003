@@ -19,11 +19,33 @@ truststore.inject_into_ssl()  # <--- E QUESTO, SUBITO DOPO L'IMPORT
 
 # ================== LOGGING ==================
 
+# ================== LOGGING ==================
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
 )
 logger = logging.getLogger("main")
+
+
+class SkipTelegramPollingFilter(logging.Filter):
+    """
+    Filtra le chiamate di polling verso Telegram (getUpdates),
+    così non intasano il log quando non ci sono nuovi messaggi.
+    """
+    def filter(self, record: logging.LogRecord) -> bool:
+        msg = record.getMessage()
+        # I log di httpx hanno forma:
+        # "HTTP Request: GET https://api.telegram.org/bot.../getUpdates "HTTP/1.1 200 OK""
+        if "api.telegram.org" in msg and "getUpdates" in msg:
+            return False  # NON loggare questa riga
+        return True       # tutto il resto passa
+
+
+# Applica il filtro solo ai log HTTP di httpx
+httpx_logger = logging.getLogger("httpx")
+httpx_logger.addFilter(SkipTelegramPollingFilter())
+
 
 
 async def main() -> None:
