@@ -644,6 +644,156 @@ async def call_rest_service(
         }
 
 
+# ===================== TOOL AGGIUNTIVO: RICERCA INTELLIGENTE ARTICOLI =====================
+
+@mcp.tool()
+async def smart_article_search(
+        search_term: str,
+        ctx: Context,
+) -> dict:
+    """
+    Ricerca intelligente di articoli con fallback automatici sequenziali.
+
+    Strategia automatica a 4 livelli:
+    1. Cerca per codice esatto
+    2. Se non trova → cerca per descrizione completa
+    3. Se non trova → cerca per descrizione troncata (ultima lettera rimossa)
+    4. Se non trova → restituisce tutti gli articoli disponibili
+
+    Args:
+        search_term: Termine di ricerca (codice articolo o descrizione)
+        ctx: Contesto MCP per report progress
+
+    Returns:
+        dict con:
+        - ok: bool (successo operazione)
+        - strategy_used: str (quale strategia ha trovato risultati)
+        - search_term: str (termine originale cercato)
+        - articles: list (articoli trovati)
+        - message: str (messaggio descrittivo per l'utente)
+    """
+
+    logger.info("=== SMART ARTICLE SEARCH: search_term=%r ===", search_term)
+
+    # ========== STRATEGIA 1: Cerca per CODICE esatto ==========
+    logger.info("📋 Strategia 1/4: Ricerca per CODICE esatto=%r", search_term)
+    await ctx.report_progress(1, 4)
+
+    result1 = await call_rest_service(
+        service_name="list_articles",
+        arguments={"code": search_term, "description": None},
+        ctx=ctx,
+    )
+
+    if result1.get("ok") and result1.get("response_json"):
+        articles = result1["response_json"]
+        if articles and len(articles) > 0:
+            logger.info("✅ STRATEGIA 1 SUCCESSO: Trovati %d articoli per CODICE", len(articles))
+            return {
+                "ok": True,
+                "strategy_used": "code_exact",
+                "search_term": search_term,
+                "articles": articles,
+                "total_found": len(articles),
+                "message": f"Trovati {len(articles)} articolo/i cercando per codice esatto '{search_term}'"
+            }
+
+    logger.info("❌ Strategia 1 fallita: nessun articolo con codice=%r", search_term)
+
+    # ========== STRATEGIA 2: Cerca per DESCRIZIONE completa ==========
+    logger.info("📋 Strategia 2/4: Ricerca per DESCRIZIONE completa=%r", search_term)
+    await ctx.report_progress(2, 4)
+
+    result2 = await call_rest_service(
+        service_name="list_articles",
+        arguments={"code": None, "description": search_term},
+        ctx=ctx,
+    )
+
+    if result2.get("ok") and result2.get("response_json"):
+        articles = result2["response_json"]
+        if articles and len(articles) > 0:
+            logger.info("✅ STRATEGIA 2 SUCCESSO: Trovati %d articoli per DESCRIZIONE", len(articles))
+            return {
+                "ok": True,
+                "strategy_used": "description_full",
+                "search_term": search_term,
+                "articles": articles,
+                "total_found": len(articles),
+                "message": f"Trovati {len(articles)} articolo/i cercando per descrizione '{search_term}'"
+            }
+
+    logger.info("❌ Strategia 2 fallita: nessun articolo con descrizione=%r", search_term)
+
+    # ========== STRATEGIA 3: Cerca per DESCRIZIONE TRONCATA ==========
+    if len(search_term) > 1:
+        truncated = search_term[:-1]
+        logger.info("📋 Strategia 3/4: Ricerca per DESCRIZIONE TRONCATA=%r (da %r)", truncated, search_term)
+        await ctx.report_progress(3, 4)
+
+        result3 = await call_rest_service(
+            service_name="list_articles",
+            arguments={"code": None, "description": truncated},
+            ctx=ctx,
+        )
+
+        if result3.get("ok") and result3.get("response_json"):
+            articles = result3["response_json"]
+            if articles and len(articles) > 0:
+                logger.info("✅ STRATEGIA 3 SUCCESSO: Trovati %d articoli per DESCRIZIONE TRONCATA", len(articles))
+                return {
+                    "ok": True,
+                    "strategy_used": "description_truncated",
+                    "search_term": search_term,
+                    "truncated_term": truncated,
+                    "articles": articles,
+                    "total_found": len(articles),
+                    "message": f"Trovati {len(articles)} articolo/i con ricerca parziale '{truncated}' (troncato da '{search_term}')"
+                }
+
+        logger.info("❌ Strategia 3 fallita: nessun articolo con descrizione troncata=%r", truncated)
+    else:
+        logger.info("⚠️ Strategia 3 saltata: search_term troppo corto (%d caratteri)", len(search_term))
+
+    # ========== STRATEGIA 4: FALLBACK - Tutti gli articoli ==========
+    logger.info("📋 Strategia 4/4: FALLBACK - Estrazione di TUTTI gli articoli")
+    await ctx.report_progress(4, 4)
+
+    result4 = await call_rest_service(
+        service_name="list_articles",
+        arguments={"code": None, "description": None},
+        ctx=ctx,
+    )
+
+    if result4.get("ok") and result4.get("response_json"):
+        articles = result4["response_json"]
+        logger.info("✅ STRATEGIA 4 (FALLBACK): Estratti %d articoli totali", len(articles))
+        return {
+            "ok": True,
+            "strategy_used": "fallback_all",
+            "search_term": search_term,
+            "articles": articles,
+            "total_found": len(articles),
+            "message": (
+                f"Nessuna corrispondenza trovata per '{search_term}'. "
+                f"Ecco tutti i {len(articles)} articoli disponibili nel catalogo."
+            )
+        }
+
+    # ========== ERRORE TOTALE ==========
+    error_msg = result4.get("error", "Errore sconosciuto durante la ricerca")
+    logger.error("❌ TUTTE LE STRATEGIE FALLITE: %s", error_msg)
+
+    return {
+        "ok": False,
+        "strategy_used": "none",
+        "search_term": search_term,
+        "articles": [],
+        "total_found": 0,
+        "message": f"Impossibile cercare articoli. Errore: {error_msg}"
+    }
+
+
 # ===================== ENTRYPOINT STDIO =====================
 
 if __name__ == "__main__":

@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, simpledialog
 from pathlib import Path
 import xml.etree.ElementTree as ET
 import copy  # per duplicare agent con tutti i tool
@@ -85,6 +85,22 @@ class AgentsXmlEditor(tk.Tk):
 
     # ===================== CREAZIONE UI =====================
 
+    def _bind_undo_redo(self, widget: tk.Widget):
+        """
+        Abilita CTRL+Z / CTRL+Y sul widget (Entry o Text).
+        """
+        # Alcuni widget (Text / Entry) supportano 'undo'
+        try:
+            widget.configure(undo=True)
+        except tk.TclError:
+            pass
+
+        for seq in ("<Control-z>", "<Control-Z>"):
+            widget.bind(seq, lambda e, w=widget: w.event_generate("<<Undo>>"))
+        for seq in ("<Control-y>", "<Control-Y>"):
+            widget.bind(seq, lambda e, w=widget: w.event_generate("<<Redo>>"))
+
+
     def _create_widgets(self):
         main_frame = ttk.Frame(self, padding=5)
         main_frame.pack(fill=tk.BOTH, expand=True)
@@ -153,49 +169,64 @@ class AgentsXmlEditor(tk.Tk):
         row = 0
         ttk.Label(self.agent_frame, text="ID agente:").grid(row=row, column=0, sticky="e", padx=5, pady=2)
         self.var_agent_id = tk.StringVar()
-        self.entry_agent_id = ttk.Entry(self.agent_frame, textvariable=self.var_agent_id)
+        self.entry_agent_id = tk.Entry(self.agent_frame, textvariable=self.var_agent_id)
         self.entry_agent_id.grid(row=row, column=1, sticky="ew", padx=5, pady=2)
+        self._bind_undo_redo(self.entry_agent_id)
         row += 1
 
         ttk.Label(self.agent_frame, text="Nome agente:").grid(row=row, column=0, sticky="e", padx=5, pady=2)
         self.var_agent_name = tk.StringVar()
-        self.entry_agent_name = ttk.Entry(self.agent_frame, textvariable=self.var_agent_name)
+        self.entry_agent_name = tk.Entry(self.agent_frame, textvariable=self.var_agent_name)
         self.entry_agent_name.grid(row=row, column=1, sticky="ew", padx=5, pady=2)
+        self._bind_undo_redo(self.entry_agent_name)
         row += 1
 
         ttk.Label(self.agent_frame, text="Descrizione:").grid(row=row, column=0, sticky="ne", padx=5, pady=2)
-        self.txt_agent_description = tk.Text(self.agent_frame, height=4, wrap="word")
+        self.txt_agent_description = tk.Text(self.agent_frame, height=4, wrap="word", undo=True, autoseparators=True,
+                                             maxundo=1000)
         self.txt_agent_description.grid(row=row, column=1, sticky="ew", padx=5, pady=2)
+        self._bind_undo_redo(self.txt_agent_description)
         row += 1
 
         ttk.Label(self.agent_frame, text="Role:").grid(row=row, column=0, sticky="ne", padx=5, pady=2)
-        self.txt_role = tk.Text(self.agent_frame, height=4, wrap="word")
+        self.txt_role = tk.Text(self.agent_frame, height=4, wrap="word", undo=True, autoseparators=True, maxundo=1000)
         self.txt_role.grid(row=row, column=1, sticky="ew", padx=5, pady=2)
+        self._bind_undo_redo(self.txt_role)
         row += 1
 
         ttk.Label(self.agent_frame, text="Language tone:").grid(row=row, column=0, sticky="ne", padx=5, pady=2)
-        self.txt_language_tone = tk.Text(self.agent_frame, height=4, wrap="word")
+        self.txt_language_tone = tk.Text(self.agent_frame, height=4, wrap="word", undo=True, autoseparators=True,
+                                         maxundo=1000)
         self.txt_language_tone.grid(row=row, column=1, sticky="ew", padx=5, pady=2)
+        self._bind_undo_redo(self.txt_language_tone)
         row += 1
 
         ttk.Label(self.agent_frame, text="Tools usage:").grid(row=row, column=0, sticky="ne", padx=5, pady=2)
-        self.txt_tools_usage = tk.Text(self.agent_frame, height=4, wrap="word")
+        self.txt_tools_usage = tk.Text(self.agent_frame, height=4, wrap="word", undo=True, autoseparators=True,
+                                       maxundo=1000)
         self.txt_tools_usage.grid(row=row, column=1, sticky="ew", padx=5, pady=2)
+        self._bind_undo_redo(self.txt_tools_usage)
         row += 1
 
         ttk.Label(self.agent_frame, text="Main flows:").grid(row=row, column=0, sticky="ne", padx=5, pady=2)
-        self.txt_main_flows = tk.Text(self.agent_frame, height=6, wrap="word")
+        self.txt_main_flows = tk.Text(self.agent_frame, height=6, wrap="word", undo=True, autoseparators=True,
+                                      maxundo=1000)
         self.txt_main_flows.grid(row=row, column=1, sticky="ew", padx=5, pady=2)
+        self._bind_undo_redo(self.txt_main_flows)
         row += 1
 
         ttk.Label(self.agent_frame, text="Error handling:").grid(row=row, column=0, sticky="ne", padx=5, pady=2)
-        self.txt_error_handling = tk.Text(self.agent_frame, height=4, wrap="word")
+        self.txt_error_handling = tk.Text(self.agent_frame, height=4, wrap="word", undo=True, autoseparators=True,
+                                          maxundo=1000)
         self.txt_error_handling.grid(row=row, column=1, sticky="ew", padx=5, pady=2)
+        self._bind_undo_redo(self.txt_error_handling)
         row += 1
 
         ttk.Label(self.agent_frame, text="Extra notes:").grid(row=row, column=0, sticky="ne", padx=5, pady=2)
-        self.txt_extra_notes = tk.Text(self.agent_frame, height=4, wrap="word")
+        self.txt_extra_notes = tk.Text(self.agent_frame, height=4, wrap="word", undo=True, autoseparators=True,
+                                       maxundo=1000)
         self.txt_extra_notes.grid(row=row, column=1, sticky="ew", padx=5, pady=2)
+        self._bind_undo_redo(self.txt_extra_notes)
         row += 1
 
         self.agent_frame.columnconfigure(1, weight=1)
@@ -211,30 +242,35 @@ class AgentsXmlEditor(tk.Tk):
 
         ttk.Label(self.tool_frame, text="Nome tool:").grid(row=1, column=0, sticky="e", padx=5, pady=2)
         self.var_tool_name = tk.StringVar()
-        self.entry_tool_name = ttk.Entry(self.tool_frame, textvariable=self.var_tool_name)
+        self.entry_tool_name = tk.Entry(self.tool_frame, textvariable=self.var_tool_name)
         self.entry_tool_name.grid(row=1, column=1, sticky="ew", padx=5, pady=2)
+        self._bind_undo_redo(self.entry_tool_name)
 
         ttk.Label(self.tool_frame, text="Description:").grid(row=2, column=0, sticky="ne", padx=5, pady=2)
-        self.txt_tool_description = tk.Text(self.tool_frame, height=4, wrap="word")
+        self.txt_tool_description = tk.Text(self.tool_frame, height=4, wrap="word", undo=True, autoseparators=True, maxundo=1000)
         self.txt_tool_description.grid(row=2, column=1, columnspan=2, sticky="ew", padx=5, pady=2)
+        self._bind_undo_redo(self.txt_tool_description)
 
         ttk.Label(self.tool_frame, text="Before calling rules:").grid(row=3, column=0, sticky="ne", padx=5, pady=2)
-        self.txt_tool_before_rules = tk.Text(self.tool_frame, height=4, wrap="word")
+        self.txt_tool_before_rules = tk.Text(self.tool_frame, height=4, wrap="word", undo=True, autoseparators=True, maxundo=1000)
         self.txt_tool_before_rules.grid(row=3, column=1, sticky="nsew", padx=5, pady=2)
+        self._bind_undo_redo(self.txt_tool_before_rules)
         br_scroll = ttk.Scrollbar(self.tool_frame, orient="vertical", command=self.txt_tool_before_rules.yview)
         br_scroll.grid(row=3, column=2, sticky="ns")
         self.txt_tool_before_rules.configure(yscrollcommand=br_scroll.set)
 
         ttk.Label(self.tool_frame, text="Calling rules:").grid(row=4, column=0, sticky="ne", padx=5, pady=2)
-        self.txt_tool_calling_rules = tk.Text(self.tool_frame, height=4, wrap="word")
+        self.txt_tool_calling_rules = tk.Text(self.tool_frame, height=4, wrap="word", undo=True, autoseparators=True, maxundo=1000)
         self.txt_tool_calling_rules.grid(row=4, column=1, sticky="nsew", padx=5, pady=2)
+        self._bind_undo_redo(self.txt_tool_calling_rules)
         cr_scroll = ttk.Scrollbar(self.tool_frame, orient="vertical", command=self.txt_tool_calling_rules.yview)
         cr_scroll.grid(row=4, column=2, sticky="ns")
         self.txt_tool_calling_rules.configure(yscrollcommand=cr_scroll.set)
 
         ttk.Label(self.tool_frame, text="After calling rules:").grid(row=5, column=0, sticky="ne", padx=5, pady=2)
-        self.txt_tool_after_rules = tk.Text(self.tool_frame, height=4, wrap="word")
+        self.txt_tool_after_rules = tk.Text(self.tool_frame, height=4, wrap="word", undo=True, autoseparators=True, maxundo=1000)
         self.txt_tool_after_rules.grid(row=5, column=1, sticky="nsew", padx=5, pady=2)
+        self._bind_undo_redo(self.txt_tool_after_rules)
         ar_scroll = ttk.Scrollbar(self.tool_frame, orient="vertical", command=self.txt_tool_after_rules.yview)
         ar_scroll.grid(row=5, column=2, sticky="ns")
         self.txt_tool_after_rules.configure(yscrollcommand=ar_scroll.set)
@@ -248,6 +284,14 @@ class AgentsXmlEditor(tk.Tk):
 
         btn_del_tool = ttk.Button(tool_btn_frame, text="Elimina Tool", command=self._on_delete_tool)
         btn_del_tool.pack(side=tk.LEFT, padx=3)
+
+        # NUOVO: clonazione tool su altro agente
+        btn_clone_tool = ttk.Button(
+            tool_btn_frame,
+            text="Clona Tool su altro agente",
+            command=self._on_clone_tool_to_other_agent,
+        )
+        btn_clone_tool.pack(side=tk.LEFT, padx=3)
 
         btn_gen_rules = ttk.Button(
             tool_btn_frame,
@@ -1064,6 +1108,110 @@ class AgentsXmlEditor(tk.Tk):
         self.current_selection_kind = "agent"
         self.dirty = True
         self._refresh_tree()
+
+    def _on_clone_tool_to_other_agent(self):
+        """
+        Clona il tool selezionato copiandolo su un altro agente.
+        Il tool rimane anche sull'agente di origine.
+        """
+        if self.current_agent_index is None or self.current_tool_index is None:
+            messagebox.showwarning(
+                "Nessun tool selezionato",
+                "Seleziona prima un tool dall'albero a sinistra.",
+            )
+            return
+
+        # Validazione indici
+        if not (0 <= self.current_agent_index < len(self.agents)):
+            messagebox.showwarning(
+                "Agente origine non valido",
+                "L'agente selezionato non è valido.",
+            )
+            return
+
+        src_agent = self.agents[self.current_agent_index]
+        src_tools = src_agent.get("tools", []) or []
+        if not (0 <= self.current_tool_index < len(src_tools)):
+            messagebox.showwarning(
+                "Tool origine non valido",
+                "Il tool selezionato non è valido.",
+            )
+            return
+
+        src_tool = src_tools[self.current_tool_index]
+
+        # Preparazione elenco agenti per mostrare info all'utente
+        agents_info_lines = []
+        for idx, ag in enumerate(self.agents):
+            aid = (ag.get("id") or "").strip() or "(senza id)"
+            aname = (ag.get("name") or "").strip()
+            if aname and aname != aid:
+                label = f"{aid} ({aname})"
+            else:
+                label = aid
+            agents_info_lines.append(f"- {aid}")
+
+        agents_list_str = "\n".join(agents_info_lines) if agents_info_lines else "(nessun agente disponibile)"
+
+        # Chiede l'ID dell'agente di destinazione
+        prompt_text = (
+            "Inserisci l'ID dell'agente di destinazione.\n\n"
+            "Agenti disponibili (campo 'id'):\n"
+            f"{agents_list_str}\n\n"
+            "NB: l'ID deve corrispondere al valore dell'attributo 'id' dell'Agente nel file XML."
+        )
+
+        target_id = simpledialog.askstring(
+            "Clona Tool su altro agente",
+            prompt_text,
+            parent=self,
+        )
+
+        if not target_id:
+            # annullato dall'utente
+            return
+
+        target_id = target_id.strip()
+        target_index = None
+        for idx, ag in enumerate(self.agents):
+            if (ag.get("id") or "").strip() == target_id:
+                target_index = idx
+                break
+
+        if target_index is None:
+            messagebox.showerror(
+                "Agente non trovato",
+                f"Non esiste alcun agente con id='{target_id}'.",
+            )
+            return
+
+        # Clonazione (deep copy)
+        cloned_tool = copy.deepcopy(src_tool)
+
+        dest_agent = self.agents[target_index]
+        dest_tools = dest_agent.get("tools", []) or []
+        dest_tools.append(cloned_tool)
+        dest_agent["tools"] = dest_tools
+
+        self.dirty = True
+        self._refresh_tree()
+
+        # Seleziona il nuovo tool sull'agente di destinazione
+        new_tool_index = len(dest_tools) - 1
+        new_iid = f"agent_{target_index}_tool_{new_tool_index}"
+        if new_iid in self.tree_item_map:
+            self.tree.selection_set(new_iid)
+            self.tree.focus(new_iid)
+            self.current_agent_index = target_index
+            self.current_tool_index = new_tool_index
+            self.current_selection_kind = "tool"
+            self._load_tool_to_form(target_index, new_tool_index)
+            self.notebook.select(self.tool_frame)
+
+        messagebox.showinfo(
+            "Tool clonato",
+            f"Il tool è stato clonato correttamente sull'agente con id='{target_id}'.",
+        )
 
     # ===================== CHIUSURA APP =====================
 

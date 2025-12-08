@@ -212,29 +212,48 @@ class OrdersBot:
 
     async def _select_agent(self, chat_id: int, text: str) -> Agent:
         """
-        Sceglie quale agent usare:
-        - per brevi risposte di conferma riusa l'agent corrente
-        - altrimenti chiede al router LLM quale agent_id usare
+        Strategia ibrida per selezione agent:
+        1. Messaggi ≤3 parole → mantieni agent corrente
+        2. Messaggi in conversazione attiva (≤15 parole) → mantieni se non esplicito cambio
+        3. Altrimenti → router LLM
         """
         t = text.lower().strip()
+        word_count = len(t.split())
 
-        # Se ho già un agent in corso e il messaggio è brevissimo (es. "sì", "ok"),
-        # mantengo il contesto senza chiamare il router
-        if chat_id in self.current_agent_id and len(t.split()) <= 3:
+        # ========== CASO 1: Messaggi molto brevi ==========
+        if chat_id in self.current_agent_id and word_count <= 3:
             agent_id = self.current_agent_id[chat_id]
             logger.info(
-                "Messaggio breve, mantengo agent corrente '%s' per chat_id=%s",
+                "Messaggio brevissimo (≤3 parole: '%s'), mantengo agent '%s'",
+                text,
                 agent_id,
-                chat_id,
             )
             return self.agents[agent_id]
 
-        # Usa il router LLM per scegliere l'agent_id
+        # ========== CASO 2: Conversazione attiva con messaggio medio ==========
+        if chat_id in self.current_agent_id and word_count <= 15:
+            current_agent_id = self.current_agent_id[chat_id]
+
+            # Verifica se è un cambio esplicito di contesto
+            if self._is_explicit_context_switch(t):
+                logger.info(
+                    "Rilevato cambio esplicito di contesto in messaggio: %r",
+                    text[:50],
+                )
+            else:
+                logger.info(
+                    "Conversazione attiva, messaggio medio (≤15 parole), "
+                    "nessun cambio esplicito → mantengo agent '%s'",
+                    current_agent_id,
+                )
+                return self.agents[current_agent_id]
+
+        # ========== CASO 3: Usa router LLM ==========
         agent_id = await self._llm_choose_agent(text)
 
         if agent_id not in self.agents:
             logger.warning(
-                "Router LLM ha scelto un agent_id sconosciuto '%s', uso default_agent_id=%s",
+                "Router LLM ha scelto agent_id sconosciuto '%s', uso default=%s",
                 agent_id,
                 self.default_agent_id,
             )
@@ -242,12 +261,64 @@ class OrdersBot:
 
         self.current_agent_id[chat_id] = agent_id
         logger.info(
-            "Router: scelto agent_id='%s' per chat_id=%s, messaggio=%r",
+            "Router: scelto agent_id='%s' per chat_id=%s (parole=%d)",
             agent_id,
             chat_id,
-            text,
+            word_count,
         )
         return self.agents[agent_id]
+
+    def _is_explicit_context_switch(self, text: str) -> bool:
+        """
+        Rileva se il messaggio indica un CAMBIO ESPLICITO di contesto.
+
+        Returns:
+            True se il messaggio inizia chiaramente una nuova operazione
+            False se sembra una continuazione
+        """
+        text_lower = text.lower().strip()
+
+        # Marker espliciti di cambio
+        explicit_switches = [
+            "ora vorrei",
+            "adesso voglio",
+            "invece",
+            "lascia perdere",
+            "annulla",
+            "cambiamo argomento",
+            "passiamo a",
+
+            # Nuove operazioni complete (non continuazioni)
+            "inserisci un nuovo cliente",
+            "crea un nuovo cliente",
+            "registra un cliente",
+            "aggiungi un cliente",
+
+            "inserisci un nuovo articolo",
+            "crea un nuovo articolo",
+            "aggiungi un articolo",
+
+            "imposta il prezzo",
+            "aggiorna la giacenza",
+
+            "mostrami i clienti",
+            "elenca i clienti",
+            "cerca i clienti",
+
+            "mostrami le giacenze",
+            "mostrami i prezzi",
+        ]
+
+        for marker in explicit_switches:
+            if marker in text_lower:
+                return True
+
+        # Se inizia con questi verbi imperativi + "nuovo/nuova", è cambio
+        if text_lower.startswith(("inserisci un nuovo", "crea un nuovo",
+                                  "aggiungi un nuovo", "registra un nuovo")):
+            return True
+
+        return False
 
     # ---------- handlers comandi ----------
 
@@ -276,12 +347,25 @@ class OrdersBot:
             return
 
         chat_id = update.message.chat_id
+
+        # 1) Se la sessione esiste in memoria, puliscila dal DB
         if chat_id in self.sessions:
+            session = self.sessions[chat_id]
+            try:
+                # Chiama il metodo clear() della sessione per svuotare il DB
+                session.clear()
+                logger.info("Sessione DB pulita per chat_id=%s", chat_id)
+            except Exception as e:
+                logger.warning("Errore durante la pulizia della sessione DB: %s", e)
+
+            # Poi rimuovi dalla memoria
             del self.sessions[chat_id]
+
+        # 2) Resetta l'agent corrente
         if chat_id in self.current_agent_id:
             del self.current_agent_id[chat_id]
 
-        await update.message.reply_text("🔁 Ho azzerato la memoria della chat (contesto e sessione).")
+        await update.message.reply_text("🔄 Ho azzerato la memoria della chat (contesto e sessione DB).")
 
     async def agent_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Permette di selezionare manualmente l'agent: /agent orders, /agent customers, ecc."""
