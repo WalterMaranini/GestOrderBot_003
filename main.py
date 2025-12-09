@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 from agents import Agent
 from agents.mcp import MCPServerStdio
 from dotenv import load_dotenv
+load_dotenv()
 
 from my_agents import get_available_agent_ids, create_agent_by_id
 from telegram_bot import OrdersBot
@@ -18,15 +19,11 @@ import truststore  # <--- AGGIUNGI QUESTO
 truststore.inject_into_ssl()  # <--- E QUESTO, SUBITO DOPO L'IMPORT
 
 # ================== LOGGING ==================
-
-# ================== LOGGING ==================
-
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
 )
 logger = logging.getLogger("main")
-
 
 class SkipTelegramPollingFilter(logging.Filter):
     """

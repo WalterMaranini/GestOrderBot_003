@@ -101,36 +101,27 @@
     </Param>
   </Service>
 
-  <Service name="crea_rapportino_lavoro" method="POST" path="/api/.../RDL/App-Sistemi/Crea" baseUrlOverride="http://todevsched0003:9050">
-    <Header name="X-BC-Gruppo" value="WM" />
-    <Header name="X-BC-Authorization" env="BC_AUTH_TOKEN" />
-    <Header name="Content-Type" value="application/json" />
-    <Header name="Accept" value="application/json" />
+  <Service name="crea_rapportino_lavoro" method="POST" path="/api/ES_RDL/App-Sistemi/Crea" baseUrlOverride="http://todevsched0003:9050">
 
-    <Param name="Parametri" required="true" location="body" type="object">
-      <Field name="CodCliFor" type="int" required="true" />
-      <Field name="DataDoc" type="string" required="true" />
-      <Field name="NoteIntestazione" type="string" required="false" />
+  <Header name="X-BC-Gruppo" value="WM" />
+  <Header name="X-BC-Authorization" env="BC_AUTH_TOKEN" />
+  <Header name="Content-Type" value="application/json" />
+  <Header name="Accept" value="application/json" />
 
-      <Field name="Righe" type="array" required="true">
-        <Item type="object">
-          <Field name="CodArt" type="string" required="true" />
-          <Field name="Descrizione" type="string" required="false" />
-          <Field name="Qta" type="decimal" required="true" />
-          <Field name="PrezzoUnitario" type="decimal" required="false" />
-          <Field name="CodCentroCosto" type="string" required="false" />
-          <Field name="CodCommessa" type="string" required="false" />
-          <Field name="NoteRiga" type="string" required="false" />
-        </Item>
-      </Field>
+  <Param name="Parametri" required="true" location="body" type="object">
 
-      <Field name="AllegatiAnnotazioni" type="array" required="false">
-        <Item type="object">
-          <Field name="Testo" type="string" required="true" />
-          <Field name="Tipo" type="string" required="false" />
-        </Item>
-      </Field>
-    </Param>
-  </Service>
-
-</RestServices>
+    <Field name="CodTipoDoc" type="int" required="true" />
+    <Field name="CodRisorsaProd" type="string" required="true" />
+    <Field name="DataRegistrazione" type="string" required="true" />
+    <Field name="Righe" type="array" required="true">
+      <Item type="object">
+        <Field name="TipoOperazione" type="string" required="false" />
+        <Field name="Quantita" type="int" required="false" />
+        <Field name="DesEstesa" type="string" required="false" />
+        <Field name="NotaInterna" type="string" required="false" />
+        <Field name="CodCliFor" type="int" required="false" />
+        <Field name="DatiIndCodCommessa" type="string" required="false" />
+      </Item>
+    </Field>
+  </Param>
+</Service></RestServices>
