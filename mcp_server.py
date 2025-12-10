@@ -470,9 +470,20 @@ async def call_rest_service(
             query_params[p.name] = arguments[p.name]
 
     # 3) Parametri body
-    for p in svc.params:
-        if p.location == "body" and p.name in arguments:
-            body_payload[p.name] = arguments[p.name]
+    body_params = [p for p in svc.params if p.location == "body"]
+
+    # Caso speciale: singolo parametro di nome 'body' -> usa il suo contenuto come root del JSON
+    if len(body_params) == 1 and body_params[0].name == "body" and "body" in arguments:
+        if isinstance(arguments["body"], dict):
+            body_payload = arguments["body"]
+        else:
+            raise ValueError("Il parametro 'body' deve essere un oggetto (dict).")
+    else:
+        # Comportamento standard: ogni parametro body diventa una chiave del JSON
+        for p in body_params:
+            if p.name in arguments:
+                body_payload[p.name] = arguments[p.name]
+
 
     # 4) Header (da configurazione + variabili d'ambiente)
     headers: dict[str, str] = {}

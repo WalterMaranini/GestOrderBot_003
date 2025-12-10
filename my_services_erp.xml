@@ -124,4 +124,32 @@
       </Item>
     </Field>
   </Param>
-</Service></RestServices>
+</Service>
+
+<Service name="listacdpsin"
+         method="POST"
+         path="/report/App-Sistemi/RunReport/LISTACDPSIN">
+
+  <!-- Intestazioni fisse / da env -->
+  <Header name="X-BC-Gruppo" value="WM" />
+  <Header name="X-BC-Authorization" env="BC_AUTH_TOKEN" />
+
+  <!-- Unico parametro di body: 'body', oggetto -->
+  <Param name="body" required="true" location="body" type="object">
+    <!-- Campi di primo livello nel JSON -->
+    <Field name="Skip" type="int" required="true" />
+    <Field name="Take" type="int" required="true" />
+
+    <!-- Filters: array di oggetti {Name, Operators, Values[]} -->
+    <Field name="Filters" type="array" required="true">
+      <Item type="object">
+        <Field name="Name" type="string" required="true" />
+        <Field name="Operators" type="int" required="true" />
+        <Field name="Values" type="array" required="true">
+          <Item type="string" />
+        </Field>
+      </Item>
+    </Field>
+  </Param>
+</Service>
+</RestServices>

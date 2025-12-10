@@ -807,11 +807,16 @@ class MyServicesEditor(tk.Tk):
     def _detect_main_param(self, body_json):
         """
         Se il body è del tipo { "Parametri": { ... } } prende "Parametri" come Param principale.
-        Altrimenti usa un generico "body".
+        Negli altri casi (es. { "Filters": [...] }) usa un generico "body"
+        mantenendo intatta tutta la struttura.
         """
         if isinstance(body_json, dict) and len(body_json) == 1:
             key = next(iter(body_json.keys()))
-            return key, body_json[key]
+            # Applichiamo la scorciatoia SOLO per "Parametri"
+            if key.lower() == "parametri":
+                return key, body_json[key]
+
+        # Per tutti gli altri casi (Filters, ecc.) consideriamo l'oggetto intero
         return "body", body_json
 
     def _build_fields_from_json(self, value, indent="    ", top_level=False):

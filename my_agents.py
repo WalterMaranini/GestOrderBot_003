@@ -10,6 +10,8 @@ from agents.mcp import MCPServerStdio
 
 logger = logging.getLogger(__name__)
 
+# Carico subito le variabili da .env (come in mcp_server.py)
+load_dotenv()
 
 class AgentsConfigError(Exception):
     """Errore nella configurazione degli agent (file XML)."""

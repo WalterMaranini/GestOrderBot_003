@@ -17,13 +17,10 @@ from my_agents import (
     create_agent_by_id,
     get_agents_router_metadata,
 )
-
-import truststore
-truststore.inject_into_ssl()
-
 import tkinter as tk
 from tkinter import ttk
-
+import truststore
+truststore.inject_into_ssl()
 
 # ================== LOGGING ==================
 
@@ -31,19 +28,12 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
 )
-logger = logging.getLogger("local_chat_gui")
+logger = logging.getLogger("local_chat")
 
 
-# ================== BACKEND CHAT (stesso core di OrdersBot, ma senza Telegram) ==================
+# ================== BACKEND CHAT ==================
 
-class LocalOrdersChat:
-    """
-    Backend "core" che replica la logica di OrdersBot, ma senza Telegram.
-
-    - Usa gli stessi Agent (orders, customers, item, RdL, ecc.)
-    - Usa lo stesso router LLM per scegliere l'agent
-    - Usa SQLiteSession per memorizzare il contesto conversazionale
-    """
+class LocalChat:
 
     def __init__(self, agents: Dict[str, Agent], default_agent_id: str = "orders") -> None:
         load_dotenv()
@@ -56,7 +46,7 @@ class LocalOrdersChat:
             logger.info("OPENAI_API_KEY attiva (parziale): %s", masked)
 
         if not agents:
-            raise RuntimeError("Nessun agent passato a LocalOrdersChat.")
+            raise RuntimeError("Nessun agent passato a LocalChat.")
 
         if default_agent_id not in agents:
             raise RuntimeError(
@@ -89,18 +79,45 @@ class LocalOrdersChat:
             self.sessions[chat_id] = SQLiteSession(chat_id, sessions_path)
         return self.sessions[chat_id]
 
+    def reset_session(self, chat_id: str) -> None:
+        """
+        Azzera lo stato in memoria per una determinata chat.
+
+        - Dimentica la history associata a chat_id lato processo.
+        - Se SQLiteSession ha un metodo reset()/clear(), prova a chiamarlo.
+        """
+        sess = self.sessions.get(chat_id)
+        if sess is not None:
+            try:
+                reset_fn = getattr(sess, "reset", None) or getattr(sess, "clear", None)
+                if callable(reset_fn):
+                    try:
+                        reset_fn()
+                    except Exception:
+                        logger.exception(
+                            "Errore durante reset della SQLiteSession per chat_id=%s",
+                            chat_id,
+                        )
+            except Exception:
+                logger.exception(
+                    "Errore inatteso durante reset_session(chat_id=%s)", chat_id
+                )
+
+        self.sessions.pop(chat_id, None)
+        self.current_agent_id.pop(chat_id, None)
+        logger.info("Sessione azzerata per chat_id=%s", chat_id)
+
+
     # ---------- router LLM per scegliere l'agent ----------
 
     async def _llm_choose_agent(self, user_text: str) -> str:
-        """
-        Stessa logica del router LLM di OrdersBot, ma senza Telegram.
-        """
+
         available_ids = list(self.agents.keys())
 
         # Se c'è un solo agent, inutile chiamare l'LLM
         if len(available_ids) == 1:
             logger.info(
-                "Router LLM: un solo agent disponibile (%s), lo uso senza chiamare il modello.",
+                "Router LLM: un solo agent disponibile (%s), lo uso senza chiamare LLM.",
                 available_ids[0],
             )
             return available_ids[0]
@@ -109,7 +126,6 @@ class LocalOrdersChat:
 
         lines = [
             "Sei un router che deve instradare il messaggio dell'utente verso il giusto Agent.",
-            "",
             "Devi scegliere a quale AGENT inoltrare il messaggio dell'utente.",
             "Hai a disposizione i seguenti agent_id:",
         ]
@@ -144,7 +160,7 @@ class LocalOrdersChat:
         lines.append("  " + ", ".join(available_ids))
         lines.append("- Non spiegare la scelta, non aggiungere testo.")
         lines.append("")
-        lines.append("Messaggio dell'utente:")
+        lines.append("Messaggio dell'utente in base al quale devi scegliere il giusto Agente:")
         lines.append(user_text)
 
         prompt = "\n".join(lines)
@@ -185,11 +201,7 @@ class LocalOrdersChat:
         return self.default_agent_id
 
     async def _select_agent(self, chat_id: str, text: str) -> Agent:
-        """
-        Stessa logica di OrdersBot._select_agent:
-        - per brevi risposte di conferma riusa l'agent corrente
-        - altrimenti chiede al router LLM quale agent_id usare
-        """
+
         t = text.lower().strip()
 
         # Se ho già un agent in corso e il messaggio è brevissimo (es. "sì", "ok"),
@@ -232,6 +244,7 @@ class LocalOrdersChat:
         logger.info("Messaggio (chat_id=%s): %s", chat_id, user_message)
 
         session = self._get_session(chat_id)
+        logger.info("Seleziono l'Agente in base al contenuto del messaggio")
         agent = await self._select_agent(chat_id, user_message)
 
         result = await Runner.run(
@@ -248,15 +261,19 @@ class LocalOrdersChat:
 
 class ChatWindow(tk.Tk):
     """
-    Finestra di chat locale che usa LocalOrdersChat come backend.
+    Finestra di chat locale che usa LocalChat come backend.
     """
 
-    def __init__(self, core: LocalOrdersChat):
+    def __init__(self, core: LocalChat):
         super().__init__()
 
         self.core = core
 
-        self.title("OrdersBot - Chat locale")
+        # Gestione sessioni logiche (per non avere storia fra una chat e l'altra)
+        self.chat_index = 1
+        self.chat_id = f"local_{self.chat_index}"
+
+        self.title("ESOLVER CHAT")
         self.geometry("900x600")
 
         self._create_widgets()
@@ -264,7 +281,7 @@ class ChatWindow(tk.Tk):
 
         # Messaggio iniziale
         self._append_system_message(
-            "Chat locale pronta.\nScrivi un messaggio per interagire con OrdersBot (senza Telegram)."
+            "Chat locale pronta.\nScrivi un messaggio per interagire con ESOLVER."
         )
 
     # ---------------- UI ----------------
@@ -292,10 +309,10 @@ class ChatWindow(tk.Tk):
         self.chat_text["yscrollcommand"] = scrollbar.set
 
         # Tag di stile
-        self.chat_text.tag_configure("user", foreground="#4fc3f7", font=("Consolas", 10, "bold"))
-        self.chat_text.tag_configure("bot", foreground="#a5d6a7", font=("Consolas", 10, "bold"))
-        self.chat_text.tag_configure("time", foreground="#9e9e9e", font=("Consolas", 8, "italic"))
-        self.chat_text.tag_configure("body", foreground="#ffffff", font=("Consolas", 10))
+        self.chat_text.tag_configure("user", foreground="#4fc3f7", font=("Consolas", 12, "bold"))
+        self.chat_text.tag_configure("bot", foreground="#a5d6a7", font=("Consolas", 12, "bold"))
+        self.chat_text.tag_configure("time", foreground="#9e9e9e", font=("Consolas", 10, "italic"))
+        self.chat_text.tag_configure("body", foreground="#ffffff", font=("Consolas", 12))
 
         # Frame input
         input_frame = ttk.Frame(main_frame)
@@ -310,6 +327,14 @@ class ChatWindow(tk.Tk):
 
         send_button = ttk.Button(input_frame, text="Invia", command=self.on_send_clicked)
         send_button.grid(row=0, column=1, sticky="e", padx=(8, 0))
+
+        # Bottone per azzerare la sessione e ripartire da zero
+        reset_button = ttk.Button(
+            input_frame,
+            text="Nuova sessione",
+            command=self.on_reset_session,
+        )
+        reset_button.grid(row=0, column=2, sticky="e", padx=(8, 0))
 
         # Invio = manda, Shift+Invio = a capo
         self.input_text.bind("<Return>", self._on_enter)
@@ -340,6 +365,39 @@ class ChatWindow(tk.Tk):
         self.input_text.insert("insert", "\n")
         return "break"
 
+    def on_reset_session(self):
+        """
+        Azzera la sessione corrente e ne crea una nuova,
+        così l'LLM non vede più la storia precedente.
+        """
+        # Reset lato backend (se supportato)
+        try:
+            if hasattr(self.core, "reset_session"):
+                self.core.reset_session(self.chat_id)
+        except Exception:
+            logger.exception("Errore durante il reset della sessione sul core")
+
+        # Nuovo id di sessione logica
+        self.chat_index += 1
+        self.chat_id = f"local_{self.chat_index}"
+
+        # Pulisci area chat
+        self.chat_text.config(state="normal")
+        self.chat_text.delete("1.0", "end")
+        self.chat_text.config(state="disabled")
+
+        # Pulisci input
+        self.input_text.delete("1.0", "end")
+
+        # Messaggio di sistema
+        self._append_system_message(
+            f"Nuova sessione avviata (sessione #{self.chat_index}). "
+            "La chat non ha più accesso ai messaggi precedenti."
+        )
+
+
+
+
     def on_send_clicked(self):
         user_text = self.input_text.get("1.0", "end").strip()
         if not user_text:
@@ -351,17 +409,19 @@ class ChatWindow(tk.Tk):
         self._set_input_state("disabled")
 
         # Avvia la chiamata al backend in modo asincrono
-        asyncio.create_task(self._process_message_async(user_text))
+        # e passa il chat_id corrente
+        asyncio.create_task(self._process_message_async(user_text, self.chat_id))
 
-    async def _process_message_async(self, user_text: str):
+    async def _process_message_async(self, user_text: str, chat_id: str):
         try:
-            reply = await self.core.process_message(user_text, chat_id="local")
+            reply = await self.core.process_message(user_text, chat_id=chat_id)
         except Exception as e:
             logger.exception("Errore durante l'elaborazione del messaggio")
             reply = f"❌ Errore interno: {e}"
 
         self._append_bot_message(reply)
         self._set_input_state("normal")
+
 
     # ---------------- append messaggi ----------------
 
@@ -398,53 +458,97 @@ async def main() -> None:
     """
     Sequenza:
     1) Carica variabili d'ambiente
-    2) Avvia la REST API (uvicorn rest_api:app)
+    2) Avvia eventualmente la REST API (solo in LOCAL di default)
     3) Avvia MCP server (mcp_server.py)
     4) Carica gli Agent da my_agents.xml
     5) Avvia interfaccia grafica di chat
     """
     load_dotenv()
 
+    # --- Modalità LOCAL / ERP ---
+    erp_mode = os.getenv("ORDERS_ERP_MODE", "LOCAL").upper()
+    if erp_mode not in ("LOCAL", "ERP"):
+        logger.warning(
+            "ORDERS_ERP_MODE='%s' non valido. Uso 'LOCAL' come default.",
+            erp_mode,
+        )
+        erp_mode = "LOCAL"
+    logger.info("Modalità ORDERS_ERP_MODE attiva: %s", erp_mode)
+
     rest_proc: subprocess.Popen | None = None
     try:
-        # --- AVVIO REST API (come in main.py) ---
+        # --- AVVIO REST API (solo se serve) ---
         rest_cmd_env = os.getenv("ORDERS_REST_COMMAND")
-        if rest_cmd_env:
-            rest_cmd = rest_cmd_env.split()
-        else:
-            rest_cmd = [
-                sys.executable,
-                "-m",
-                "uvicorn",
-                "rest_api:app",
-                "--host",
-                "127.0.0.1",
-                "--port",
-                "8001",
-                "--reload",
-            ]
 
-        logger.info("Avvio REST API con comando: %s", " ".join(rest_cmd))
-        rest_proc = subprocess.Popen(
-            rest_cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
-        logger.info("REST API avviata con PID=%s", rest_proc.pid)
+        if erp_mode == "LOCAL":
+            # In LOCAL vogliamo SEMPRE una REST (mini-ERP locale)
+            if rest_cmd_env:
+                # esempio: ORDERS_REST_COMMAND="python -m uvicorn rest_api:app --host 127.0.0.1 --port 8001 --reload"
+                rest_cmd = rest_cmd_env.split()
+                logger.info(
+                    "Modalità LOCAL: avvio REST API con comando da variabile ORDERS_REST_COMMAND: %s",
+                    rest_cmd_env,
+                )
+            else:
+                # Comando di default per avviare la REST API locale
+                rest_cmd = [
+                    sys.executable,
+                    "-m",
+                    "uvicorn",
+                    "rest_api:app",
+                    "--host",
+                    "127.0.0.1",
+                    "--port",
+                    "8001",
+                    "--reload",
+                ]
+                logger.info(
+                    "Modalità LOCAL: avvio REST API locale con comando di default: %s",
+                    " ".join(rest_cmd),
+                )
+
+            rest_proc = subprocess.Popen(
+                rest_cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            logger.info("REST API avviata con PID=%s", rest_proc.pid)
+
+        else:
+            # Modalità ERP
+            if rest_cmd_env:
+                # Caso avanzato: vuoi comunque avviare un gateway REST custom
+                rest_cmd = rest_cmd_env.split()
+                logger.info(
+                    "Modalità ERP: avvio REST API esterna/gateway con comando da ORDERS_REST_COMMAND: %s",
+                    rest_cmd_env,
+                )
+                rest_proc = subprocess.Popen(
+                    rest_cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                )
+                logger.info("REST API (ERP/gateway) avviata con PID=%s", rest_proc.pid)
+            else:
+                # Caso standard ERP: niente REST locale, uso solo gli endpoint di my_services_erp.xml
+                logger.info(
+                    "Modalità ERP: nessuna REST API locale avviata "
+                    "(uso solo gli endpoint definiti in my_services_erp.xml)."
+                )
 
         # --- AVVIO MCP SERVER ---
         mcp_command = os.getenv("ORDERS_MCP_COMMAND", sys.executable)
         mcp_script = os.getenv("ORDERS_MCP_SCRIPT", "mcp_server.py")
 
         async with MCPServerStdio(
-            name="Orders MCP Server",
+            name="MCP Server",
             params={
                 "command": mcp_command,
                 "args": [mcp_script],
             },
             cache_tools_list=True,
             client_session_timeout_seconds=30.0,
-        ) as orders_mcp_server:
+        ) as mcp_server:
             logger.info("MCP server avviato, carico gli Agent dal file XML.")
 
             # --- CREAZIONE AGENT DAL FILE XML ---
@@ -456,7 +560,7 @@ async def main() -> None:
 
             agents: Dict[str, Agent] = {}
             for agent_id in agent_ids:
-                agents[agent_id] = create_agent_by_id(agent_id, orders_mcp_server)
+                agents[agent_id] = create_agent_by_id(agent_id, mcp_server)
                 logger.info("Creato Agent id='%s' dal file XML.", agent_id)
 
             default_agent_id = "orders" if "orders" in agents else agent_ids[0]
@@ -472,7 +576,7 @@ async def main() -> None:
                 default_agent_id,
             )
 
-            core = LocalOrdersChat(agents=agents, default_agent_id=default_agent_id)
+            core = LocalChat(agents=agents, default_agent_id=default_agent_id)
 
             # --- AVVIO GUI ---
             app = ChatWindow(core)
