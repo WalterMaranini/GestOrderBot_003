@@ -3,8 +3,9 @@ import sys
 import asyncio
 import logging
 import subprocess
-from typing import Dict
+from typing import Dict, Any
 from datetime import datetime
+import json
 
 from dotenv import load_dotenv
 from openai import OpenAI
@@ -70,6 +71,12 @@ class LocalChat:
         # agent_id corrente per chat
         self.current_agent_id: Dict[str, str] = {}
 
+        # Cambio agent in attesa di conferma esplicita dell'utente
+        self.pending_agent_switch: Dict[str, str] = {}
+
+        # Messaggio utente associato alla proposta di cambio agent (da riusare se l'utente dice "no")
+        self.pending_agent_message: Dict[str, str] = {}
+
     # ---------- utility sessione ----------
 
     def _get_session(self, chat_id: str) -> SQLiteSession:
@@ -105,8 +112,144 @@ class LocalChat:
 
         self.sessions.pop(chat_id, None)
         self.current_agent_id.pop(chat_id, None)
+        self.pending_agent_switch.pop(chat_id, None)
+        self.pending_agent_message.pop(chat_id, None)
         logger.info("Sessione azzerata per chat_id=%s", chat_id)
 
+    # ---------- logging contesto LLM ----------
+
+    def _log_llm_context(
+        self,
+        *,
+        phase: str,
+        agent: Agent | None,
+        session: SQLiteSession | None,
+        user_message: str | None,
+        extra: dict | None = None,
+    ) -> None:
+        """
+        Logga in modo strutturato il contesto che stiamo passando all'LLM.
+
+        phase: stringa che indica dove siamo (es. 'router_llm', 'runner_call').
+        agent: Agent corrente (può essere None per il router).
+        session: SQLiteSession corrente (se disponibile).
+        user_message: messaggio utente appena ricevuto o quello originale.
+        extra: info extra da attaccare (es. output finale, agent_id, ecc.).
+        """
+        try:
+            ctx: Dict[str, Any] = {
+                "phase": phase,
+                "user_message": user_message,
+            }
+
+            # Info sull'Agent (istruzioni, modello, ecc.)
+            if agent is not None:
+                ctx["agent_name"] = getattr(agent, "name", None)
+                ctx["agent_model"] = getattr(agent, "model", None)
+                ctx["agent_instructions"] = getattr(agent, "instructions", None)
+
+            # Info sulla sessione (e, se possibile, history)
+            if session is not None:
+                ctx["session_repr"] = repr(session)
+                # Prova a recuperare la history se la classe la espone
+                for attr_name in ("dump_messages", "get_messages", "get_history"):
+                    fn = getattr(session, attr_name, None)
+                    if callable(fn):
+                        try:
+                            ctx["session_history"] = fn()
+                        except Exception as e:
+                            ctx["session_history_error"] = f"{attr_name}() -> {e}"
+                        break
+
+            if extra:
+                ctx.update(extra)
+
+            # Serializza in JSON per avere un log leggibile
+            text = json.dumps(ctx, ensure_ascii=False, default=str)
+
+            # Evitiamo di spaccare il log se diventa enorme
+            max_len = 50000
+            if len(text) > max_len:
+                text = text[:max_len] + " ... [troncato]"
+
+            logger.info("LLM CONTEXT: %s", text)
+
+        except Exception:
+            logger.exception("Errore durante il logging del contesto LLM")
+
+
+    def _handle_switch_confirmation(self, chat_id: str, user_message: str) -> tuple[str, str | None]:
+        """
+        Se per questa chat c'è un cambio di Agent in attesa di conferma,
+        interpreta il messaggio dell'utente come risposta (sì/no).
+
+        Ritorna:
+          - reply_text: testo da mostrare subito all'utente
+          - original_message: se non è None, è il messaggio precedente da
+            processare con l'agente corrente (caso in cui l'utente dice "no").
+        """
+        answer = (user_message or "").strip().lower()
+        proposed_id = self.pending_agent_switch.get(chat_id)
+        current_id = self.current_agent_id.get(chat_id)
+
+        if not proposed_id:
+            logger.warning(
+                "Richiesta conferma cambio agent senza pending_agent_switch per chat_id=%s",
+                chat_id,
+            )
+            return "Non ho alcun cambio di agente in sospeso per questa conversazione.", None
+
+        yes_tokens = {"si", "sì", "ok", "va bene", "certo", "yes", "y"}
+        no_tokens = {"no", "no grazie", "non cambiare", "resta", "rimani", "lascia così"}
+
+        def matches(tokens: set[str], txt: str) -> bool:
+            return any(txt == t or txt.startswith(t + " ") for t in tokens)
+
+        # L'utente CONFERMA il cambio agent
+        if matches(yes_tokens, answer):
+            self.current_agent_id[chat_id] = proposed_id
+            # Pulisco tutto lo stato pendente
+            self.pending_agent_switch.pop(chat_id, None)
+            self.pending_agent_message.pop(chat_id, None)
+            logger.info(
+                "Utente ha confermato cambio agent: chat_id=%s, nuovo_agent=%s",
+                chat_id,
+                proposed_id,
+            )
+            reply = (
+                f"Perfetto, da ora userò l'agente {proposed_id} "
+                "per questa conversazione.\nScrivi pure cosa vuoi fare."
+            )
+            return reply, None
+
+        # L'utente RIFIUTA il cambio agent:
+        # vogliamo comunque processare il messaggio originale con l'agente corrente
+        if matches(no_tokens, answer):
+            original_msg = self.pending_agent_message.pop(chat_id, None)
+            self.pending_agent_switch.pop(chat_id, None)
+            logger.info(
+                "Utente ha rifiutato cambio agent: chat_id=%s, resto su agent=%s",
+                chat_id,
+                current_id,
+            )
+            reply = (
+                f"Ok, continuo a usare l'agente {current_id} "
+                "per questa conversazione."
+            )
+            return reply, original_msg
+
+        # Risposta ambigua: non cambio niente, resto in attesa di un sì/no chiaro
+        logger.info(
+            "Risposta ambigua alla conferma cambio agent: chat_id=%s, answer=%r",
+            chat_id,
+            answer,
+        )
+        reply = (
+            "Non ho capito se vuoi cambiare agente.\n"
+            "Rispondi 'sì' per passare all'agente proposto oppure 'no' "
+            "per restare con quello attuale."
+        )
+        return reply, None
 
     # ---------- router LLM per scegliere l'agent ----------
 
@@ -135,7 +278,7 @@ class LocalChat:
             name = info.get("name") or agent_id
             description = info.get("description", "")
             role = info.get("role", "")
-            tools_usage = info.get("tools_usage", "")
+            # tools_usage = info.get("tools_usage", "")
             main_flows = info.get("main_flows", "")
 
             desc_parts: list[str] = []
@@ -143,8 +286,8 @@ class LocalChat:
                 desc_parts.append(description)
             if role:
                 desc_parts.append(role)
-            if tools_usage:
-                desc_parts.append("Uso dei tool: " + tools_usage)
+            # if tools_usage:
+            #    desc_parts.append("Uso dei tool: " + tools_usage)
             if main_flows:
                 desc_parts.append("Flussi principali: " + main_flows)
 
@@ -164,6 +307,14 @@ class LocalChat:
         lines.append(user_text)
 
         prompt = "\n".join(lines)
+
+        # Log completo del contesto passato al router LLM
+        try:
+            max_len = 4000
+            prompt_log = prompt if len(prompt) <= max_len else prompt[:max_len] + " ... [troncato]"
+            logger.info("Router LLM - CONTEXT (prompt len=%d): %s", len(prompt), prompt_log)
+        except Exception:
+            logger.exception("Errore durante il logging del contesto del router LLM")
 
         def _call_openai() -> str:
             response = self.router_client.responses.create(
@@ -200,7 +351,7 @@ class LocalChat:
         )
         return self.default_agent_id
 
-    async def _select_agent(self, chat_id: str, text: str) -> Agent:
+    async def _select_agent(self, chat_id: str, text: str) -> tuple[Agent, str | None]:
 
         t = text.lower().strip()
 
@@ -213,39 +364,157 @@ class LocalChat:
                 agent_id,
                 chat_id,
             )
-            return self.agents[agent_id]
+            return self.agents[agent_id], None
 
-        agent_id = await self._llm_choose_agent(text)
+        # Chiedo al router LLM che agent scegliere
+        proposed_id = await self._llm_choose_agent(text)
 
-        if agent_id not in self.agents:
+        if proposed_id not in self.agents:
             logger.warning(
                 "Router LLM ha scelto un agent_id sconosciuto '%s', uso default_agent_id=%s",
-                agent_id,
+                proposed_id,
                 self.default_agent_id,
             )
-            agent_id = self.default_agent_id
+            proposed_id = self.default_agent_id
 
-        self.current_agent_id[chat_id] = agent_id
+        current_id = self.current_agent_id.get(chat_id)
+
+        # Se esiste già un agent corrente e il router propone qualcosa di diverso,
+        # prima di committare il cambio chiedo conferma esplicita all'utente.
+        if current_id is not None and current_id != proposed_id:
+            self.pending_agent_switch[chat_id] = proposed_id
+            # Salvo il messaggio originale, così posso riusarlo se l'utente dice "no"
+            self.pending_agent_message[chat_id] = text
+            logger.info(
+                "Router LLM propone cambio agent: chat_id=%s, corrente=%s, proposto=%s",
+                chat_id,
+                current_id,
+                proposed_id,
+            )
+            confirm_msg = (
+                f"Il tuo messaggio sembra più adatto all'agente {proposed_id} "
+                f"invece dell'agente corrente {current_id}.\n"
+                "Vuoi che cambi agente? Rispondi 'sì' per confermare "
+                "oppure 'no' per restare con l'agente attuale."
+            )
+            # Restituisco comunque l'agent corrente, ma NON verrà usato
+            # perché process_message intercetta confirm_msg e lo ritorna subito.
+            return self.agents[current_id], confirm_msg
+
+        # Caso normale: nessun cambio, oppure è il primo agent scelto
+        self.current_agent_id[chat_id] = proposed_id
         logger.info(
             "Router: scelto agent_id='%s' per chat_id=%s, messaggio=%r",
-            agent_id,
+            proposed_id,
             chat_id,
             text,
         )
-        return self.agents[agent_id]
+        return self.agents[proposed_id], None
 
     # ---------- API principale da usare nella chat GUI ----------
 
     async def process_message(self, user_message: str, chat_id: str = "local") -> str:
-        """
-        Punto di ingresso principale: dato un testo utente,
-        esegue tutta la pipeline Agent + Runner + MCP + REST.
-        """
+        user_message = (user_message or "").strip()
         logger.info("Messaggio (chat_id=%s): %s", chat_id, user_message)
 
+        # 1) Gestione conferma cambio agent (sì/no)
+        if chat_id in self.pending_agent_switch:
+            logger.info(
+                "Messaggio trattato come conferma cambio agent per chat_id=%s",
+                chat_id,
+            )
+            reply_text, original_msg = self._handle_switch_confirmation(chat_id, user_message)
+
+            # Se l'utente ha detto "no", ho un messaggio originale da processare
+            if original_msg:
+                session = self._get_session(chat_id)
+                agent_id = self.current_agent_id.get(chat_id) or self.default_agent_id
+                agent = self.agents.get(agent_id, next(iter(self.agents.values())))
+                logger.info(
+                    "Processo il messaggio precedente con agent_id=%s per chat_id=%s",
+                    agent_id,
+                    chat_id,
+                )
+
+                # Recupero tutta la history dalla sessione
+                try:
+                    items = await session.get_items()
+                except Exception as e:
+                    items = f"Errore get_items(): {e}"
+
+                # Log PRIMA della chiamata all'LLM
+                self._log_llm_context(
+                    phase="runner_call_from_switch_no",
+                    agent=agent,
+                    session=session,
+                    user_message=original_msg,  # <-- quello che stai per mandare all'LLM
+                    extra={
+                        "chat_id": chat_id,
+                        "agent_id": agent_id,
+                        "session_items": items,
+                    },
+                )
+
+                result = await Runner.run(
+                    agent,
+                    input=original_msg,
+                    session=session,
+                )
+
+                agent_reply = result.final_output or "Non ho ottenuto alcuna risposta dall'agent."
+
+                # Log DOPO la chiamata all'LLM
+                self._log_llm_context(
+                    phase="runner_call_from_switch_no_result",
+                    agent=agent,
+                    session=session,
+                    user_message=original_msg,
+                    extra={
+                        "chat_id": chat_id,
+                        "agent_id": agent_id,
+                        "session_items": items,
+                        "final_output": agent_reply,
+                    },
+                )
+
+                return reply_text + "\n\n" + agent_reply
+
+            # Se non ho messaggio originale (utente ha detto "sì" o risposta ambigua),
+            # ritorno solo il testo di conferma / richiesta chiarimento.
+            return reply_text
+
+        # 2) Normale flusso: nessun cambio in sospeso
         session = self._get_session(chat_id)
         logger.info("Seleziono l'Agente in base al contenuto del messaggio")
-        agent = await self._select_agent(chat_id, user_message)
+        agent, confirm_msg = await self._select_agent(chat_id, user_message)
+
+        if confirm_msg:
+            return confirm_msg
+
+        current_agent_id = None
+        for aid, a in self.agents.items():
+            if a is agent:
+                current_agent_id = aid
+                break
+
+        # Recupero tutta la history dalla sessione
+        try:
+            items = await session.get_items()
+        except Exception as e:
+            items = f"Errore get_items(): {e}"
+
+        # Log PRIMA della chiamata
+        self._log_llm_context(
+            phase="runner_call",
+            agent=agent,
+            session=session,
+            user_message=user_message,
+            extra={
+                "chat_id": chat_id,
+                "agent_id": current_agent_id,
+                "session_items": items,
+            },
+        )
 
         result = await Runner.run(
             agent,
@@ -254,7 +523,42 @@ class LocalChat:
         )
 
         reply_text = result.final_output or "Non ho ottenuto alcuna risposta dall'agent."
+
+        # Log DOPO la chiamata
+        self._log_llm_context(
+            phase="runner_call_result",
+            agent=agent,
+            session=session,
+            user_message=user_message,
+            extra={
+                "chat_id": chat_id,
+                "agent_id": current_agent_id,
+                "session_items": items,
+                "final_output": reply_text,
+            },
+        )
+
         return reply_text
+
+        reply_text = result.final_output or "Non ho ottenuto alcuna risposta dall'agent."
+
+        # (opzionale) log anche output finale LLM
+        self._log_llm_context(
+            phase="runner_call_result",
+            agent=agent,
+            session=session,
+            user_message=user_message,
+            extra={
+                "chat_id": chat_id,
+                "agent_id": current_agent_id,
+                "final_output": reply_text,
+            },
+        )
+
+        return reply_text
+
+
+
 
 
 # ================== INTERFACCIA GRAFICA (Tkinter) ==================
@@ -532,7 +836,7 @@ async def main() -> None:
             else:
                 # Caso standard ERP: niente REST locale, uso solo gli endpoint di my_services_erp.xml
                 logger.info(
-                    "Modalità ERP: nessuna REST API locale avviata "
+                    "Modalità ERP ESOLVER"
                     "(uso solo gli endpoint definiti in my_services_erp.xml)."
                 )
 
