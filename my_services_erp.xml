@@ -50,22 +50,6 @@
     </Param>
   </Service>
 
-  <Service name="leggi_cliente" method="POST" path="/api/.../App-Sistemi/Leggi" baseUrlOverride="http://todevsched0003:9050">
-    <Header name="X-BC-Gruppo" value="WM" />
-    <Header name="X-BC-Authorization" env="BC_AUTH_TOKEN" />
-    <Header name="Content-Type" value="application/json" />
-    <Header name="Accept" value="application/json" />
-
-    <Param name="Parametri" required="true" location="body" type="object">
-      <Field name="TipoAnagrafica" type="int" required="true" />
-      <Field name="CodClasseContabile" type="string" required="false" />
-      <Field name="CodAnagrafico" type="string" required="false" />
-      <Field name="CodAlternativo" type="string" required="false" />
-      <Field name="PIVA_CFisc" type="string" required="false" />
-      <Field name="NumProgrIndirizzo" type="int" required="false" />
-    </Param>
-  </Service>
-
   <Service name="crea_ordine" method="POST" path="/api/.../ORDV/App-Sistemi/Crea" baseUrlOverride="http://todevsched0003:9050">
     <Header name="X-BC-Gruppo" value="WM" />
     <Header name="X-BC-Authorization" env="BC_AUTH_TOKEN" />
@@ -126,21 +110,19 @@
   </Param>
 </Service>
 
-<Service name="listacdpsin"
-         method="POST"
-         path="/report/App-Sistemi/RunReport/LISTACDPSIN">
+<Service name="listacdpsin" method="POST" path="/report/App-Sistemi/RunReport/LISTACDPSIN">
 
-  <!-- Intestazioni fisse / da env -->
+  
   <Header name="X-BC-Gruppo" value="WM" />
   <Header name="X-BC-Authorization" env="BC_AUTH_TOKEN" />
 
-  <!-- Unico parametro di body: 'body', oggetto -->
+  
   <Param name="body" required="true" location="body" type="object">
-    <!-- Campi di primo livello nel JSON -->
+    
     <Field name="Skip" type="int" required="true" />
     <Field name="Take" type="int" required="true" />
 
-    <!-- Filters: array di oggetti {Name, Operators, Values[]} -->
+    
     <Field name="Filters" type="array" required="true">
       <Item type="object">
         <Field name="Name" type="string" required="true" />
@@ -152,4 +134,58 @@
     </Field>
   </Param>
 </Service>
-</RestServices>
+<Service name="datisinteticiclienti" method="POST" path="/report/App-Sistemi/RunReport/DATISINTETICICLIENTI" baseUrlOverride="http://todevsched0003:9050">
+
+  <Header name="X-BC-Gruppo" value="WM" />
+  <Header name="X-BC-Authorization" env="BC_AUTH_TOKEN" />
+  <Header name="Content-Type" value="application/json" />
+  <Header name="Accept" value="application/json" />
+
+  <Param name="body" required="true" location="body" type="object">
+
+    <Field name="Skip" type="int" required="true" />
+    <Field name="Take" type="int" required="true" />
+    <Field name="Filters" type="array" required="true">
+      <Item type="object">
+        <Field name="Name" type="string" required="false" />
+        <Field name="Operators" type="int" required="false" />
+        <Field name="Values" type="array" required="false">
+          <Item type="string" />
+        </Field>
+      </Item>
+    </Field>
+  </Param>
+</Service><Service name="leggi_cliente" method="POST" path="/api/ES_CLIENTE/App-Sistemi/Leggi" baseUrlOverride="http://todevsched0003:9050">
+
+  <Header name="X-BC-Gruppo" value="WM" />
+  <Header name="X-BC-Authorization" env="BC_AUTH_TOKEN" />
+  <Header name="Content-Type" value="application/json" />
+  <Header name="Accept" value="application/json" />
+
+  <Param name="body" required="true" location="body" type="object">
+
+    <Field name="CodCliFor" type="int" required="true" />
+    <Field name="PartitaIva" type="string" required="true" />
+    <Field name="CodFiscale" type="string" required="true" />
+    <Field name="RagSoc1" type="string" required="true" />
+  </Param>
+</Service><Service name="crea_cliente" method="POST" path="/api/ES_CLIENTE/App-Sistemi/Crea" baseUrlOverride="http://todevsched0003:9050">
+
+  <Header name="X-BC-Gruppo" value="WM" />
+  <Header name="X-BC-Authorization" env="BC_AUTH_TOKEN" />
+  <Header name="Content-Type" value="application/json" />
+  <Header name="Accept" value="application/json" />
+
+  <Param name="Parametri" required="true" location="body" type="object">
+
+    <Field name="TipoSoggetto" type="int" required="true" />
+    <Field name="PartitaIva" type="string" required="true" />
+    <Field name="CodFiscale" type="string" required="true" />
+    <Field name="RagSoc1" type="string" required="true" />
+    <Field name="Indirizzo" type="string" required="true" />
+    <Field name="Localita" type="string" required="true" />
+    <Field name="Provincia" type="string" required="true" />
+    <Field name="Cap" type="string" required="true" />
+    <Field name="CodStato" type="string" required="true" />
+  </Param>
+</Service></RestServices>

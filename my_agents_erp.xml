@@ -77,11 +77,34 @@ Il tool chiama il servizio REST "leggi_cliente".</Description><BeforeCallingRule
   * dai priorità al codice come chiave primaria.
 - Se le informazioni sono insufficienti:
   * chiedi all'utente di specificare un cliente più preciso
-    (esempio: "Hai il codice cliente?" oppure "Puoi dirmi la ragione sociale completa?").</BeforeCallingRules><CallingRules>- Rispetta i campi previsti dal servizio REST "leggi_cliente".
-- Non inventare parametri: usa solo quelli che l'utente ti ha fornito
-  o che sono chiaramente deducibili.
-- Non passare mai dati sensibili che non siano pertinenti al contesto
-  della consultazione cliente.</CallingRules><AfterCallingRules>- Se il cliente viene trovato:
+    (esempio: "Hai il codice cliente?" oppure "Puoi dirmi la ragione sociale completa?").</BeforeCallingRules><CallingRules>Questo tool corrisponde al servizio REST 'leggi_cliente'.
+
+Dettagli tecnici del servizio REST:
+- Base URL: http://todevsched0003:9050
+- Path: /api/ES_CLIENTE/App-Sistemi/Leggi
+- Metodo HTTP: POST
+
+Parametri principali (primo livello) da fornire all'endpoint REST:
+- body (object, obbligatorio, posizione: body)
+
+Dettaglio completo della struttura dei campi (inclusi eventuali campi annidati):
+- body: tipo=object, posizione=body, obbligatorio
+- body.CodCliFor: tipo=int, opzionale
+- body.PartitaIva: tipo=string, opzionale
+- body.CodFiscale: tipo=string, opzionale
+- body.RagSoc1: tipo=string, opzionale
+
+Regole per l'LLM per la chiamata tramite function calling:
+- Usa il tool MCP che invoca i servizi REST passando il nome del servizio 'leggi_cliente'.
+- Prepara un oggetto 'arguments' con una chiave per ciascun parametro principale (vedi elenco dei parametri di primo livello) e, se presenti, popola correttamente i sotto-campi secondo la struttura dettagliata sopra.
+- Prima di chiamare il tool, assicurati di aver raccolto dall'utente tutti i parametri obbligatori, inclusi quelli annidati nei sotto-oggetti.
+- Non inventare valori mancanti: se un dato non è disponibile, chiedilo esplicitamente all'utente.
+
+Schema di chiamata suggerito (pseudocodice):
+service_name = "leggi_cliente"
+arguments = {
+    "body": VALORE_BODY,  # vedi struttura dettagliata per eventuali sotto-campi
+}</CallingRules><AfterCallingRules>- Se il cliente viene trovato:
   * mostra i dati principali in modo ordinato (esempio: codice, descrizione,
     indirizzo, partita IVA, ecc.);
   * evita di elencare campi tecnici poco utili per l'utente finale.
@@ -110,7 +133,81 @@ Il tool chiama il servizio REST "lista_clienti_esolver".</Description><BeforeCal
   * elencali tutti in forma tabellare o puntata.
 - Se non viene trovato alcun cliente:
   * dillo chiaramente;
-  * suggerisci di modificare i criteri di ricerca.</AfterCallingRules></Tool></Tools></Agent><Agent id="timesheet" name="RapportinoLavoroAgent"><Description>Agente specializzato nella CREAZIONE di rapportini di lavoro
+  * suggerisci di modificare i criteri di ricerca.</AfterCallingRules></Tool><Tool name="datisinteticiclienti"><Description>Usa questo tool per leggere i dati sintetici relativi alle vendite di un cliente in un certo range di date (da data_inizio a data_fine)</Description><BeforeCallingRules>accertati di aver rsccolti le informazioni relative al codice cliente e al periodo su cui fare la consultazione (data_inizio / data_fine</BeforeCallingRules><CallingRules>Questo tool corrisponde al servizio REST 'datisinteticiclienti'.
+
+Dettagli tecnici del servizio REST:
+- Base URL: http://todevsched0003:9050
+- Path: /report/App-Sistemi/RunReport/DATISINTETICICLIENTI
+- Metodo HTTP: POST
+
+Parametri principali (primo livello) da fornire all'endpoint REST:
+- body (object, obbligatorio, posizione: body)
+
+Dettaglio completo della struttura dei campi (inclusi eventuali campi annidati):
+- body: tipo=object, posizione=body, obbligatorio
+- body.Skip: tipo=int, obbligatorio
+- body.Take: tipo=int, obbligatorio
+- body.Filters: tipo=array, obbligatorio
+- body.Filters.Item: tipo=object
+- body.Filters.Item.Name: tipo=string, opzionale
+- body.Filters.Item.Operators: tipo=int, opzionale
+- body.Filters.Item.Values: tipo=array, opzionale
+- body.Filters.Item.Values.Item: tipo=string
+
+Nell'aarray Filters devi inserire due Item:
+il primo  per filtrare in base al cliente e qui dovrai inserire questi valori:
+	- body.Filters.Item.Name: "CliForCod" 
+	- body.Filters.Item.Operators: 1
+	- body.Filters.Item.Values.Item: qui inserisici il codice del cliente che ti ha indicato l'utente
+
+il secondo  per filtrare in base alle date di inizio e di fine e qui dovrai inserire questi valori:
+	- body.Filters.Item.Name: "DataRegistraz" 
+	- body.Filters.Item.Operators: 3
+	- body.Filters.Item.Values.Item: qui inserisici data_inizio e data_fine nel formato GGMMAAAA
+
+Regole per l'LLM per la chiamata tramite function calling:
+- Usa il tool MCP che invoca i servizi REST passando il nome del servizio 'datisinteticiclienti'.
+- Prepara un oggetto 'arguments' con una chiave per ciascun parametro principale (vedi elenco dei parametri di primo livello) e, se presenti, popola correttamente i sotto-campi secondo la struttura dettagliata sopra.
+- Prima di chiamare il tool, assicurati di aver raccolto dall'utente tutti i parametri obbligatori, inclusi quelli annidati nei sotto-oggetti.
+- Non inventare valori mancanti: se un dato non è disponibile, chiedilo esplicitamente all'utente.
+
+Schema di chiamata suggerito (pseudocodice):
+service_name = "datisinteticiclienti"
+arguments = {
+    "body": VALORE_BODY,  # vedi struttura dettagliata per eventuali sotto-campi
+}</CallingRules><AfterCallingRules>Formatta sempre i dati in forma tabellare controllando bene che le colonne siano ben allienate</AfterCallingRules></Tool><Tool name="crea_cliente"><Description>Usa questo tool per caricare un nuovo cliente</Description><BeforeCallingRules /><CallingRules>Questo tool corrisponde al servizio REST 'crea_cliente'.
+
+Dettagli tecnici del servizio REST:
+- Base URL: http://todevsched0003:9050
+- Path: /api/ES_CLIENTE/App-Sistemi/Crea
+- Metodo HTTP: POST
+
+Parametri principali (primo livello) da fornire all'endpoint REST:
+- Parametri (object, obbligatorio, posizione: body)
+
+Dettaglio completo della struttura dei campi (inclusi eventuali campi annidati):
+- Parametri: tipo=object, posizione=body, obbligatorio
+- Parametri.TipoSoggetto: tipo=int, obbligatorio --&gt; impostalo sempre a 1
+- Parametri.PartitaIva: tipo=string, opzionale
+- Parametri.CodFiscale: tipo=string, opzionale
+- Parametri.RagSoc1: tipo=string, obbligatorio
+- Parametri.Indirizzo: tipo=string, obbligatorio
+- Parametri.Localita: tipo=string, obbligatorio
+- Parametri.Provincia: tipo=string, obbligatorio
+- Parametri.Cap: tipo=string, obbligatorio
+- Parametri.CodStato: tipo=string, obbligatorio
+
+Regole per l'LLM per la chiamata tramite function calling:
+- Usa il tool MCP che invoca i servizi REST passando il nome del servizio 'crea_cliente'.
+- Prepara un oggetto 'arguments' con una chiave per ciascun parametro principale (vedi elenco dei parametri di primo livello) e, se presenti, popola correttamente i sotto-campi secondo la struttura dettagliata sopra.
+- Prima di chiamare il tool, assicurati di aver raccolto dall'utente tutti i parametri obbligatori, inclusi quelli annidati nei sotto-oggetti.
+- Non inventare valori mancanti: se un dato non è disponibile, chiedilo esplicitamente all'utente.
+
+Schema di chiamata suggerito (pseudocodice):
+service_name = "crea_cliente"
+arguments = {
+    "Parametri": VALORE_PARAMETRI,  # vedi struttura dettagliata per eventuali sotto-campi
+}</CallingRules><AfterCallingRules /></Tool></Tools></Agent><Agent id="timesheet" name="RapportinoLavoroAgent"><Description>Agente specializzato nella CREAZIONE di rapportini di lavoro
 collegati a commesse
  </Description><Instructions><Role>Sei il RapportinoLavoroAgent, ti occupi di inserire rapportini di lavoro (esempio: ore lavorate, attività svolte) su commesse o ordini di lavoro, tramite i servizi REST dell'ERP.</Role><LanguageTone>Rispondi sempre in italiano, in modo chiaro e strutturato.
 Guidi l'utente passo passo nella raccolta delle informazioni necessarie (commessa, data, ore, attività, risorse, ecc.).</LanguageTone><ToolsUsage>Devi usare i tool MCP dedicati ai rapportini di lavoro (da definire nei servizi REST) per:
