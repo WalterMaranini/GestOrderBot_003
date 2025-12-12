@@ -188,4 +188,28 @@
     <Field name="Cap" type="string" required="true" />
     <Field name="CodStato" type="string" required="true" />
   </Param>
+</Service><Service name="aggiorna_cliente" method="POST" path="/api/ES_CLIENTE/App-Sistemi/Aggiorna" baseUrlOverride="http://todevsched0003:9050">
+
+  <Header name="X-BC-Gruppo" value="WM" />
+  <Header name="X-BC-Authorization" env="BC_AUTH_TOKEN" />
+  <Header name="Content-Type" value="application/json" />
+  <Header name="Accept" value="application/json" />
+
+  <Param name="Parametri" required="true" location="body" type="object">
+
+    <Field name="TipoAnagrafica" type="int" required="true" />
+    <Field name="CodCliFor" type="int" required="true" />
+    <Field name="RagSoc1" type="string" required="true" />
+    <Field name="RagSoc2" type="string" required="true" />
+    <Field name="Indirizzo" type="string" required="true" />
+    <Field name="Indirizzo2" type="string" required="true" />
+    <Field name="Localita" type="string" required="true" />
+    <Field name="Localita2" type="string" required="true" />
+    <Field name="Provincia" type="string" required="true" />
+    <Field name="Cap" type="string" required="true" />
+    <Field name="CodStato" type="string" required="true" />
+    <Field name="NumTel" type="string" required="true" />
+    <Field name="NumTel2" type="string" required="true" />
+    <Field name="IndirEmail" type="string" required="true" />
+  </Param>
 </Service></RestServices>
